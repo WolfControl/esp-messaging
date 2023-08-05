@@ -37,10 +37,10 @@ TaskHandle_t handshakeTaskHandle, serialListenerTaskHandle;
 
 typedef void (*messageHandler)(const char* topic, const char* payload);
 
-// TODO: Add destination MAC address to message struct
 typedef struct {
     char* message;
     size_t size;
+    uint8_t destinationMAC[6];
 } Message;
 
 esp_now_peer_info_t gatewayInfo;
@@ -68,10 +68,8 @@ void sendMessageTask(void *pvParameter);
 void listenSerialTask(void* pvParameters);
 
 // Helpers
-bool sendMessageJSON(cJSON *message);
-void sendMessageString(const char* topic, const char* payload);
-void sendMessageFloat(const char* topic, float payload);
-void sendMessage(const char* topic, const char* payload);
+bool sendMessageJSON(cJSON *message, const uint8_t *destinationMAC);
+void sendMessageSerial(const char* topic, const char* payload);
 
 char* parseJsonField(const cJSON* jsonObject, const char* fieldName);
 cJSON* parseAndValidateJson(const char* rawData);

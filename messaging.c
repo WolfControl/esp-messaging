@@ -1,6 +1,7 @@
 #include "messaging.h"
 
 /*---------- Handlers: ESPNow  ----------*/
+
 void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     static const char *TAG = "OnESPNowSendDevice";
@@ -16,7 +17,10 @@ void OnESPNowRecvDevice(const uint8_t *mac_addr, const uint8_t *incomingData, in
     ESP_LOGD(TAG, "Posting packet from gateway to incomingMessageQueue, length: %d", len);
     if (xQueueSend(incomingMessageQueue, (void *) incomingData, 0) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send packet to incomingMessage queue");
-        sendMessageString("device/error", "MessageReceivedFailed!");
+
+        // TODO: report failure back to gateway
+
+        // Can handlers be something other than void? if so, return error code via ret = xQueueSend(...)
     }
 }
 
@@ -59,6 +63,7 @@ void OnESPNowRecvGateway(const uint8_t *mac_addr, const uint8_t *incomingData, i
 }
 
 /*---------- Handlers: Serial  ----------*/
+
 // Used for handshake in setupSerial. Not intended to be used by the user
 void setupHandler(const char* topic, const char* payload)
 {
@@ -103,6 +108,7 @@ void onSerialReceive(const char* data, messageHandler handler) {
 
 
 /*---------- Setup functions ----------*/
+
 esp_err_t setupESPNow (const uint8_t *gatewayAddress, bool isGateway)
 {
     static const char *TAG = "setupESPNowCommon";
@@ -287,22 +293,20 @@ void setupSerial(messageHandler handler, int txPin, int rxPin)
 
 /*---------- RTOS tasks ----------*/ 
 
-// Receives messages from the outgoingMessageQueue and sends them to destination passed as parameter.
-// TODO: pull destination from message struct. Currently sends all messages to gateway
-void sendMessageTask(void *pvParameters)
+// Receives and sends messages from the outgoingMessageQueue via ESP-NOW
+void sendESPNowTask(void *pvParameters)
 {
-
-    static const char *TAG = "sendMessageTask";
+    static const char *TAG = "sendESPNowTask";
     Message* outgoingMsg;
-
-    const uint8_t *destinationAddress = (uint8_t *)pvParameters;
 
     while(1){
         // Receive the Message struct from the queue
         if (xQueueReceive(outgoingMessageQueue, &outgoingMsg, portMAX_DELAY) == pdTRUE)
         {
+            ESP_LOGD(TAG, "Received message from outgoingMessageQueue: %s", outgoingMsg->message);
+
             // Send the JSON string over ESP-NOW
-            esp_err_t result = esp_now_send(destinationAddress, (uint8_t *) outgoingMsg->message, outgoingMsg->size); 
+            esp_err_t result = esp_now_send(outgoingMsg->destinationMAC, (uint8_t *) outgoingMsg->message, outgoingMsg->size); 
 
             if (result == ESP_OK) {
                 ESP_LOGI(TAG, "Published packet to ESP-NOW: %s", outgoingMsg->message);
@@ -348,49 +352,73 @@ void listenSerialTask(void* pvParameters)
     }
 }
 
+void listenESPNowTask (void* pvParameters)
+{
+    static const char *TAG = "listenESPNowTask";
+    Message* incomingMsg;
+
+    while (1) {
+        // Receive the Message struct from the queue
+        if (xQueueReceive(incomingMessageQueue, &incomingMsg, portMAX_DELAY) == pdTRUE)
+        {
+            ESP_LOGI(TAG, "Received message from incomingMessageQueue: %s", incomingMsg->message);
+
+            // call helpers to parse and validate incoming message struct
+
+
+            // Call user handler
+            // Gateway handler: forward over serial
+            // Device handler: process incoming command
+
+
+
+            ESP_LOGD(TAG, "Freeing memory...");
+            free(incomingMsg->message);    // Free the packet string
+            free(incomingMsg); // Free the Message struct
+        }
+    }
+
+}
 
 /*---------- Helper functions ----------*/
 
-// TODO: refactor to sendESPNowJSON, string, etc
-// takes a cJSON object, serializes, wraps in Message struct, posts to outgoingMessage queue. Does not parse input.
-bool sendMessageJSON(cJSON *message) {
+// takes a cJSON object and destination MAC, serializes, wraps in Message struct, posts to outgoingMessage queue. Does not parse input.
+bool sendMessageESPNow(cJSON *message, uint8_t *destinationAddress) {
+
+    static const char* TAG = "sendMessageESPNow";
+
+    ESP_LOGD(TAG, "Serializing JSON object...");
     char* packetString = cJSON_PrintUnformatted(message);
 
+    ESP_LOGD(TAG, "Creating Message struct...");
     Message* outgoingMsg = (Message*) malloc(sizeof(Message));
+    
+    ESP_LOGD(TAG, "Populating Message struct...");
     outgoingMsg->message = packetString;
     outgoingMsg->size = strlen(packetString) + 1;
+    outgoingMsg->destinationAddress = destinationAddress;
 
+    ESP_LOGD(TAG, "Posting packet to outgoingMessage queue...");
     if (xQueueSend(outgoingMessageQueue, &outgoingMsg, 0) != pdTRUE) {
-        ESP_LOGE("sendMessageJSON", "Failed to send packet to outgoingMessage queue");
+        ESP_LOGE(TAG, "Failed to send packet to outgoingMessage queue");
+
+        ESP_LOGD(TAG, "Freeing memory...");
         free(outgoingMsg->message);
         free(outgoingMsg);
         cJSON_Delete(message);
+
         return false;
     }
 
+    ESP_LOGD(TAG, "Freeing memory...");
     cJSON_Delete(message);
+
     return true;
 }
 
-void sendMessageString(const char* topic,const  char* payload) {
-    cJSON* message = cJSON_CreateObject();
-    cJSON_AddStringToObject(message, "topic", topic);
-    cJSON_AddStringToObject(message, "payload", payload);
-
-    sendMessageJSON(message);
-}
-
-void sendMessageFloat(const char* topic, float payload) {
-    cJSON* message = cJSON_CreateObject();
-    cJSON_AddStringToObject(message, "topic", topic);
-    cJSON_AddNumberToObject(message, "payload", payload);
-
-    sendMessageJSON(message);
-}
-
-// TOP PRIO: Refactor on espnow gateway to rename to sendSerialMessage
+// TODO: Refactor to accept a cJSON object instead of a topic and payload
 // Creates a JSON message from the provided topic and payload, and transmits it over UART
-void sendMessage(const char* topic, const char* payload) {
+void sendMessageSerial(const char* topic, const char* payload) {
     static const char* TAG = "sendMessage";
     static const char newline = '\0';
 
