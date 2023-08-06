@@ -146,7 +146,16 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
 
     ESP_LOGD(TAG, "Starting listener task with abstract handler...");
-    xTaskCreate(receiveESPNowTask, "receiveESPNow_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveESPNowTaskHandle);
+    if (pdPass != xTaskCreate(listenESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &listenESPNowTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create listener task");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGD(TAG, "Starting sender task...");
+    if (pdPass != xTaskCreate(sendESPNowTask, "sendESPNow_task", TASK_STACK_SIZE, NULL, TASK_PRIORITY, &sendESPNowTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create sender task");
+        return ESP_FAIL;
+    }
 
     ESP_LOGD(TAG, "Sensor setup complete");
     return ESP_OK;
@@ -155,7 +164,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) {
     const char*TAG = "setupSerial";
 
-    // Configuration for the UART driver
+    ESP_LOGD(TAG, "Setting UART parameters...");
     uart_config_t uart_config = {
         .baud_rate = BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
@@ -164,7 +173,6 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
     };
 
-    ESP_LOGD(TAG, "Setting UART parameters...");
     uart_param_config(UART_NUMBER, &uart_config);
 
     ESP_LOGD(TAG, "Setting UART pins...");
@@ -182,9 +190,15 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
         return ESP_FAIL;
     }
 
-    ESP_LOGI(TAG, "Starting listener task with user provided handler");
+    ESP_LOGD(TAG, "Starting listener task with abstract handler...");
     if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveSerialTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGD(TAG, "Starting sender task...");
+    if (pdPASS != xTaskCreate(sendSerialTask, "sendSerial_task", TASK_STACK_SIZE, NULL, TASK_PRIORITY, &sendSerialTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create task: sendSerial_task");
         return ESP_FAIL;
     }
 
