@@ -146,13 +146,13 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
 
     ESP_LOGD(TAG, "Starting listener task with abstract handler...");
-    if (pdPass != xTaskCreate(listenESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &listenESPNowTaskHandle)) {
+    if (pdPASS != xTaskCreate(receiveESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &receiveESPNowTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create listener task");
         return ESP_FAIL;
     }
 
     ESP_LOGD(TAG, "Starting sender task...");
-    if (pdPass != xTaskCreate(sendESPNowTask, "sendESPNow_task", TASK_STACK_SIZE, NULL, TASK_PRIORITY, &sendESPNowTaskHandle)) {
+    if (pdPASS != xTaskCreate(sendESPNowTask, "sendESPNow_task", TASK_STACK_SIZE, NULL, TASK_PRIORITY, &sendESPNowTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create sender task");
         return ESP_FAIL;
     }
@@ -369,7 +369,7 @@ void listenSerialDaemon(void* pvParameters)
 // Takes raw json body and passes to outbound queue dependent on if MAC was provided
 bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC) {
     
-    Message* outgoingMsg = = (Message*) malloc(sizeof(Message));
+    Message* outgoingMsg = (Message*) malloc(sizeof(Message));
     outgoingMsg->bodySerialized = cJSON_PrintUnformatted(body);
     outgoingMsg->size = strlen(outgoingMsg->bodySerialized) + 1;
     memcpy(outgoingMsg->destinationMAC, destinationMAC, 6);
