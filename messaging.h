@@ -1,9 +1,4 @@
-#ifndef MESSAGING_H
-#define MESSAGING_H
-
-#ifdef __cplusplus
-extern "C" {
-#endif
+#pragma once
 
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
@@ -19,9 +14,12 @@ extern "C" {
 #include "nvs_flash.h"
 #include "string.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // move somewhere else, they're getting redifined by linker
 // macros for serial
-
 #define UART_NUMBER UART_NUM_2
 #define BUF_SIZE 256
 #define UART_QUEUE_SIZE 0
@@ -31,17 +29,15 @@ extern "C" {
 #define LISTENER_TASK_DELAY_MS 10
 #define UART_READ_TIMEOUT_MS 100
 
-bool hasSentCONN, hasReceivedCONNACK;
-
-TaskHandle_t handshakeTaskHandle, serialListenerTaskHandle;
-
-typedef void (*messageHandler)(const char* topic, const char* payload);
+TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 
 typedef struct {
-    char* message;
-    size_t size;
-    uint8_t destinationMAC[6];
+    char* bodySerialized;                 // Serialized JSON
+    size_t size;                // Size of serialized JSON
+    uint8_t destinationMAC[5];  // MAC address of destination device or NULL for serial
 } Message;
+
+typedef void (*messageHandler)(Message* incomingMessage);
 
 esp_now_peer_info_t gatewayInfo;
 
@@ -49,33 +45,30 @@ const char* bridgeName;
 const char* deviceName;
 const char* networkName;
 
-QueueHandle_t incomingMessageQueue;
-QueueHandle_t outgoingMessageQueue;
+QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue;
+QueueHandle_t incomingSerialQueue, outgoingSerialQueue;
+
 
 // Callbacks
 void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status);
-void OnESPNowRecvDevice(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status);
-void OnESPNowRecvGateway(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
+void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 
 // Setup functions
-esp_err_t setupESPNow(const uint8_t *gatewayAddress, bool isGateway);
-void setupSerial(messageHandler handler, int txPin, int rxPin);
-
+esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway);
+esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
 // RTOS tasks
-void sendMessageTask(void *pvParameter);
-void listenSerialTask(void* pvParameters);
+void sendESPNowTask(void *pvParameters);
+void sendSerialTask(void *pvParameters);
+void receiveESPNowTask (void* pvParameters);
+void receiveSerialTask(void* pvParameters);
+void listenSerialDaemon(void* pvParameters);
 
 // Helpers
-bool sendMessageJSON(cJSON *message, const uint8_t *destinationMAC);
-void sendMessageSerial(const char* topic, const char* payload);
-
-char* parseJsonField(const cJSON* jsonObject, const char* fieldName);
-cJSON* parseAndValidateJson(const char* rawData);
+bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC);
+Message* createMessage(cJSON *body, uint8_t *destinationMAC);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

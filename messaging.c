@@ -1,6 +1,6 @@
 #include "messaging.h"
 
-/*---------- Handlers: ESPNow  ----------*/
+/*---------- ESPNow Interrupts: Posting to queues ----------*/
 
 void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
@@ -10,20 +10,6 @@ void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status)
 
 }
 
-void OnESPNowRecvDevice(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
-{
-    static const char *TAG = "OnESPNowRecvDevice";
-
-    ESP_LOGD(TAG, "Posting packet from gateway to incomingMessageQueue, length: %d", len);
-    if (xQueueSend(incomingMessageQueue, (void *) incomingData, 0) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to send packet to incomingMessage queue");
-
-        // TODO: report failure back to gateway
-
-        // Can handlers be something other than void? if so, return error code via ret = xQueueSend(...)
-    }
-}
-
 void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     static const char *TAG = "OnESPNowSendGateway";
@@ -31,87 +17,24 @@ void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
     ESP_LOGI(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
 }
 
-void OnESPNowRecvGateway(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
+void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
-    static const char *TAG = "OnESPNowRecvGateway";
+    static const char *TAG = "OnESPNowRecv";
 
-    // Print the address of the sender and the message
-    ESP_LOGI(TAG, "Received data from %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-    ESP_LOGI(TAG, "Received %d bytes", len);
+    ESP_LOGD(TAG, "Received data from %02x:%02x:%02x:%02x:%02x:%02x", mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
     ESP_LOGI(TAG, "Received data: %s", incomingData);
 
-    // todo: call function to check for and register peer
-
-    cJSON* json = parseAndValidateJson((const char*)incomingData);
-    if(json != NULL) {
-        const char* topic = parseJsonField(json, "topic");
-        const char* payload = parseJsonField(json, "payload");
-
-        if(topic && payload) {
-            ESP_LOGI(TAG, "Forwarding incoming ESP-NOW message to serial bridge");
-            // prepend topic with "hydronet/gatewayid/deviceid" where deviceID is mapped to mac_addr of sender
-            sendMessage(topic, payload);
-        } else {
-            ESP_LOGE(TAG, "Could not parse topic or payload from incoming data");
-        }
-        
-        // Free the memory after using the json object
-        cJSON_Delete(json);
-    } else {
-        ESP_LOGE(TAG, "Could not parse incoming data as JSON");
+    ESP_LOGD(TAG, "Posting %d bytes to incomingESPNowQueue", len);
+    if (xQueueSend(incomingESPNowQueue, (void *) incomingData, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to send packet to incomingESPNowQueue queue");
     }
 }
-
-/*---------- Handlers: Serial  ----------*/
-
-// Used for handshake in setupSerial. Not intended to be used by the user
-void setupHandler(const char* topic, const char* payload)
-{
-    const char*TAG = "setupHandler";
-
-    if (strcmp(topic, "handshake") == 0) {
-        if (strcmp(payload, "CONN") == 0) {
-            ESP_LOGI(TAG, "Received CONN from the other side! Responding with CONNACK...");
-            sendMessage("handshake", "CONNACK");
-        } else if (strcmp(payload, "CONNACK") == 0) {
-            ESP_LOGI(TAG, "Received CONNACK from the other side!");
-            hasReceivedCONNACK = true;
-        }
-    }
-}
-
-// Receives a string, parses and validates it as a JSON object, then passes the data to an abstracted handler (expects parameters const char* topic, const char* payload)
-void onSerialReceive(const char* data, messageHandler handler) {
-    static const char* TAG = "onSerialReceive";
-    ESP_LOGD(TAG, "Parsing and validating JSON...");
-    cJSON* jsonObject = parseAndValidateJson(data);
-
-    if (jsonObject == NULL) {
-        ESP_LOGE(TAG, "Failed to parse or validate JSON");
-        return;
-    }
-
-    const char* topicValue = parseJsonField(jsonObject, "topic");
-    const char* payloadValue = parseJsonField(jsonObject, "payload");
-
-    if (strcmp(topicValue, "handshake") == 0 && strcmp(payloadValue, "CONN") == 0) {
-        ESP_LOGI(TAG, "Received handshake message, peer crashed! Reshaking hands...");
-        setupHandler(topicValue, payloadValue);
-    } else {
-        ESP_LOGI(TAG, "Passing data to handler...");
-        handler(topicValue, payloadValue);
-    }
-
-    ESP_LOGD(TAG, "Releasing JSON object...");
-    cJSON_Delete(jsonObject);
-}
-
 
 /*---------- Setup functions ----------*/
 
-esp_err_t setupESPNow (const uint8_t *gatewayAddress, bool isGateway)
+esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway)
 {
-    static const char *TAG = "setupESPNowCommon";
+    static const char *TAG = "setupESPNow";
     esp_err_t ret = ESP_OK;
 
     ESP_LOGD(TAG, "Initializing tcpip adapter...");
@@ -201,40 +124,38 @@ esp_err_t setupESPNow (const uint8_t *gatewayAddress, bool isGateway)
     }
 
     ESP_LOGD(TAG, "Registering receive callback for ESP-NOW...");
-    if (isGateway) {
-        ret = esp_now_register_recv_cb(OnESPNowRecvGateway);
-    } else {
-        ret = esp_now_register_recv_cb(OnESPNowRecvDevice);
-    }
+    ret = esp_now_register_recv_cb(OnESPNowRecv);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register receive callback");
         return ret;
     }
 
     // setup message queues
-    ESP_LOGD(TAG, "Creating incomingMessage queue...");
-    incomingMessageQueue = xQueueCreate(10, sizeof(Message*));
-    if (incomingMessageQueue == NULL) {
-        ESP_LOGE(TAG, "Failed to create incomingMessage queue");
+    ESP_LOGD(TAG, "Creating incomingESPNowQueue...");
+    incomingESPNowQueue = xQueueCreate(10, sizeof(Message*));
+    if (incomingESPNowQueue == NULL) {
+        ESP_LOGE(TAG, "Failed to create incomingESPNowQueue");
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "Creating outgoingMessage queue...");
-    outgoingMessageQueue = xQueueCreate(10, sizeof(Message*));
-    if (outgoingMessageQueue == NULL) {
-        ESP_LOGE(TAG, "Failed to create outgoingMessage queue");
+    ESP_LOGD(TAG, "Creating outgoingESPNowQueue...");
+    outgoingESPNowQueue = xQueueCreate(10, sizeof(Message*));
+    if (outgoingESPNowQueue == NULL) {
+        ESP_LOGE(TAG, "Failed to create outgoingESPNowQueue");
         return ESP_FAIL;
     }
+
+    ESP_LOGD(TAG, "Starting listener task with abstract handler...");
+    xTaskCreate(receiveESPNowTask, "receiveESPNow_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveESPNowTaskHandle);
 
     ESP_LOGD(TAG, "Sensor setup complete");
     return ESP_OK;
 }
 
-void setupSerial(messageHandler handler, int txPin, int rxPin)
-{
+esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) {
     const char*TAG = "setupSerial";
 
-    // TODO: replace magic numbers with defines
+    // Configuration for the UART driver
     uart_config_t uart_config = {
         .baud_rate = BAUD_RATE,
         .data_bits = UART_DATA_8_BITS,
@@ -243,57 +164,36 @@ void setupSerial(messageHandler handler, int txPin, int rxPin)
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
     };
 
-    // TODO: error handling
-    ESP_LOGD(TAG, "Setting UART pins and installing driver...");
+    ESP_LOGD(TAG, "Setting UART parameters...");
     uart_param_config(UART_NUMBER, &uart_config);
+
+    ESP_LOGD(TAG, "Setting UART pins...");
     uart_set_pin(UART_NUMBER, txPin, rxPin, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+
+    ESP_LOGD(TAG, "Installing UART driver...");
     uart_driver_install(UART_NUMBER, BUF_SIZE, BUF_SIZE, UART_QUEUE_SIZE, NULL, 0);
+
+    ESP_LOGD(TAG, "Assigning UART driver to vfs...");
     esp_vfs_dev_uart_use_driver(UART_NUMBER);
 
-    hasSentCONN = false;
-    hasReceivedCONNACK = false;
-
-     ESP_LOGI(TAG, "Starting handshake task...");
-    if (pdPASS != xTaskCreate(listenSerialTask, "handshake_task", TASK_STACK_SIZE, (void *) setupHandler, TASK_PRIORITY, &handshakeTaskHandle)) {
-        ESP_LOGE(TAG, "Failed to create task: handshake_task");
-        return;
+    ESP_LOGD(TAG, "Creating listener daemon task...");
+    if (pdPASS != xTaskCreate(listenSerialDaemon, "listenSerialDaemon_task", TASK_STACK_SIZE, NULL, TASK_PRIORITY, &serialDaemonTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create task: listenSerialDaemon_task");
+        return ESP_FAIL;
     }
 
-    // Retry with backoff
-    int delayMs = 100;  // Start with 100ms delay
-    while(!hasReceivedCONNACK) {
-        if(!hasSentCONN) {
-            ESP_LOGI(TAG, "Sending CONN message...");
-            sendMessage("handshake", "CONN");
-            hasSentCONN = pdTRUE;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(delayMs)); // wait before checking the flag
-
-        if (hasReceivedCONNACK == pdFALSE) {
-            delayMs *= 2;  // Double the delay
-            if (delayMs > 800) delayMs = 100; // Avoid too long delay, reset after reaching 800ms
-            ESP_LOGI(TAG, "Resending CONN message...");
-            sendMessage("handshake", "CONN");
-        }
-    }
-
-    // sleep for 500ms to allow the other side to finish setup
-    vTaskDelay(500 / portTICK_PERIOD_MS);
-
-    vTaskDelete(handshakeTaskHandle);
-    handshakeTaskHandle = NULL;
-
-    ESP_LOGI(TAG, "Bridge Setup Complete!");
-
-    // Start the main listener task with the user-provided handler
     ESP_LOGI(TAG, "Starting listener task with user provided handler");
-    xTaskCreate(listenSerialTask, "listenSerial_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &serialListenerTaskHandle);
+    if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveSerialTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
+        return ESP_FAIL;
+    }
+
+    return ESP_OK;
 }
 
 /*---------- RTOS tasks ----------*/ 
 
-// Receives and sends messages from the outgoingMessageQueue via ESP-NOW
+// Receive message structs from outgoingESPNowQueue and sends via ESP-NOW
 void sendESPNowTask(void *pvParameters)
 {
     static const char *TAG = "sendESPNowTask";
@@ -301,42 +201,139 @@ void sendESPNowTask(void *pvParameters)
 
     while(1){
         // Receive the Message struct from the queue
-        if (xQueueReceive(outgoingMessageQueue, &outgoingMsg, portMAX_DELAY) == pdTRUE)
+        if (xQueueReceive(outgoingESPNowQueue, &outgoingMsg, portMAX_DELAY) == pdTRUE)
         {
-            ESP_LOGD(TAG, "Received message from outgoingMessageQueue: %s", outgoingMsg->message);
+            ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingMsg->bodySerialized);
+        
+            // TODO: Parsing
 
-            // Send the JSON string over ESP-NOW
-            esp_err_t result = esp_now_send(outgoingMsg->destinationMAC, (uint8_t *) outgoingMsg->message, outgoingMsg->size); 
+            ESP_LOGD(TAG, "Sending packet to destination MAC: %02x:%02x:%02x:%02x:%02x:%02x", 
+                outgoingMsg->destinationMAC[0], 
+                outgoingMsg->destinationMAC[1], 
+                outgoingMsg->destinationMAC[2], 
+                outgoingMsg->destinationMAC[3], 
+                outgoingMsg->destinationMAC[4], 
+                outgoingMsg->destinationMAC[5]);
+            
+            esp_err_t result = esp_now_send(outgoingMsg->destinationMAC, (uint8_t *) outgoingMsg->bodySerialized, outgoingMsg->size); 
 
             if (result == ESP_OK) {
-                ESP_LOGI(TAG, "Published packet to ESP-NOW: %s", outgoingMsg->message);
+                ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingMsg->bodySerialized);
             }
             else {
                 ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
             }
 
-            free(outgoingMsg->message);    // Free the packet string
-            free(outgoingMsg); // Free the Message struct
+            // Free the Message struct and packet string
+            free(outgoingMsg->bodySerialized);    
+            free(outgoingMsg); 
         }
     }
 }
 
-void listenSerialTask(void* pvParameters)
+// Receive message structs from outgoingSerialQueue and sends via UART
+void sendSerialTask(void *pvParameters)
 {
-    messageHandler handler = (messageHandler)pvParameters;
-    const char* TAG = "listenSerialTask";
+    static const char *TAG = "sendSerialTask";
+    Message* outgoingMsg;
+    static const char newline = '\0';
 
-    while (true) {        
+    while(1) {
+        // Receive the Message struct from the queue
+        if (xQueueReceive(outgoingSerialQueue, &outgoingMsg, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGD(TAG, "Received message from outgoingSerialQueue: %s", outgoingMsg->bodySerialized);
+
+            // TODO: Parsing
+
+            // Check that the serialized JSON string doesn't exceed the buffer size
+            if (outgoingMsg->size > BUF_SIZE) {
+                ESP_LOGE(TAG, "Serialized JSON string exceeds buffer size");
+                free(outgoingMsg->bodySerialized);
+                free(outgoingMsg);
+                continue;
+            }
+
+            ESP_LOGD(TAG, "Sending packet to UART...");
+            uart_write_bytes(UART_NUMBER, outgoingMsg->bodySerialized, outgoingMsg->size);
+            uart_write_bytes(UART_NUMBER, &newline, 1);
+
+            // Free the Message struct and packet string
+            free(outgoingMsg->bodySerialized);    
+            free(outgoingMsg); 
+        }
+    }
+}
+
+// Picks up incoming raw data from incomingESPNowQueue, parses the message body as JSON, and passes to handler
+void receiveESPNowTask (void* pvParameters)
+{
+    static const char *TAG = "receiveESPNowTask";
+    messageHandler handler = (messageHandler)pvParameters;
+    Message* incomingMsg;
+
+    while (1) {
+        ESP_LOGD(TAG, "Waiting for incoming data...");
+
+        if (xQueueReceive(incomingESPNowQueue, &incomingMsg, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingMsg->bodySerialized);
+
+            // TODO: Parsing
+
+            // Gateway handler: forward over serial
+            // Device handler: process incoming command
+
+            ESP_LOGD(TAG, "Passing data to handler...");
+            //onESPNowReceive(incomingMsg, handler);
+
+        }
+    }
+
+}
+
+// Picks up incoming raw data from incomingSerialQueue, parses the message body as JSON, and passes to handler
+void receiveSerialTask(void* pvParameters)
+{
+    static const char* TAG = "receiveSerialTask";
+    messageHandler handler = (messageHandler)pvParameters;
+    Message* incomingMsg;
+
+    while (1) {
+        if (xQueueReceive(incomingSerialQueue, &incomingMsg, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGD(TAG, "Received data from incomingSerialQueue: %s", incomingMsg->bodySerialized);
+
+            // TODO: Parsing
+
+            ESP_LOGD(TAG, "Passing data to handler...");
+            //onSerialReceive(incomingMsg, handler);
+        }
+    }
+}
+
+// In lieu of an Interrupt routine like for ESP-NOW, this task posts incoming UART messages directly to the queue
+void listenSerialDaemon(void* pvParameters)
+{
+    static const char* TAG = "listenSerialDaemon";
+
+    while (1) {
+        ESP_LOGD(TAG, "Waiting for incoming data...");        
         size_t len = 0;
         uart_get_buffered_data_len(UART_NUMBER, &len);
+
         if (len > 0) {
+            ESP_LOGD(TAG, "Reading %d bytes from UART...", len);
             char incomingData[BUF_SIZE];
             int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_RATE_MS); // leaving 1 byte for null terminator
-            incomingData[received_msg_length] = '\0';  // Null-terminate the string
+            
+            ESP_LOGD(TAG, "Null terminating string...");
+            incomingData[received_msg_length] = '\0';
 
-            if (received_msg_length > 0 && incomingData[received_msg_length - 1] == '\0') {                
-                ESP_LOGI(TAG, "Received %d bytes: %s", received_msg_length, incomingData);
-                onSerialReceive(incomingData, handler);
+            if (received_msg_length > 0 && incomingData[received_msg_length - 1] == '\0') {
+
+                ESP_LOGD(TAG, "Posting to incomingSerialQueue...");
+                if (xQueueSend(incomingSerialQueue, (void *) incomingData, 0) != pdTRUE) {
+                    ESP_LOGE(TAG, "Failed to send packet to incomingSerial queue");
+                }
+
             } else if (received_msg_length == BUF_SIZE - 1) {
                 ESP_LOGE(TAG, "Received message too long for buffer: %d bytes", received_msg_length);
                 uart_flush(UART_NUMBER);
@@ -345,6 +342,7 @@ void listenSerialTask(void* pvParameters)
                 uart_flush(UART_NUMBER);
             } else {
                 ESP_LOGE(TAG, "Received incomplete or malformed message");
+                uart_flush(UART_NUMBER);
             }
         }
 
@@ -352,131 +350,27 @@ void listenSerialTask(void* pvParameters)
     }
 }
 
-void listenESPNowTask (void* pvParameters)
-{
-    static const char *TAG = "listenESPNowTask";
-    Message* incomingMsg;
-
-    while (1) {
-        // Receive the Message struct from the queue
-        if (xQueueReceive(incomingMessageQueue, &incomingMsg, portMAX_DELAY) == pdTRUE)
-        {
-            ESP_LOGI(TAG, "Received message from incomingMessageQueue: %s", incomingMsg->message);
-
-            // call helpers to parse and validate incoming message struct
-
-
-            // Call user handler
-            // Gateway handler: forward over serial
-            // Device handler: process incoming command
-
-
-
-            ESP_LOGD(TAG, "Freeing memory...");
-            free(incomingMsg->message);    // Free the packet string
-            free(incomingMsg); // Free the Message struct
-        }
-    }
-
-}
-
 /*---------- Helper functions ----------*/
 
-// takes a cJSON object and destination MAC, serializes, wraps in Message struct, posts to outgoingMessage queue. Does not parse input.
-bool sendMessageESPNow(cJSON *message, uint8_t *destinationAddress) {
-
-    static const char* TAG = "sendMessageESPNow";
-
-    ESP_LOGD(TAG, "Serializing JSON object...");
-    char* packetString = cJSON_PrintUnformatted(message);
-
-    ESP_LOGD(TAG, "Creating Message struct...");
-    Message* outgoingMsg = (Message*) malloc(sizeof(Message));
+// Takes raw json body and passes to outbound queue dependent on if MAC was provided
+bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC) {
     
-    ESP_LOGD(TAG, "Populating Message struct...");
-    outgoingMsg->message = packetString;
-    outgoingMsg->size = strlen(packetString) + 1;
-    outgoingMsg->destinationAddress = destinationAddress;
+    Message* outgoingMsg = = (Message*) malloc(sizeof(Message));
+    outgoingMsg->bodySerialized = cJSON_PrintUnformatted(body);
+    outgoingMsg->size = strlen(outgoingMsg->bodySerialized) + 1;
+    memcpy(outgoingMsg->destinationMAC, destinationMAC, 6);
 
-    ESP_LOGD(TAG, "Posting packet to outgoingMessage queue...");
-    if (xQueueSend(outgoingMessageQueue, &outgoingMsg, 0) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to send packet to outgoingMessage queue");
+    QueueHandle_t queue = destinationMAC ? outgoingESPNowQueue : outgoingSerialQueue;
+    const char* TAG = destinationMAC ? "sendMessageESPNow" : "sendMessageSerial";
 
-        ESP_LOGD(TAG, "Freeing memory...");
-        free(outgoingMsg->message);
+    if (xQueueSend(queue, &outgoingMsg, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to send packet to queue: %s", TAG);
+        free(outgoingMsg->bodySerialized);
         free(outgoingMsg);
-        cJSON_Delete(message);
-
+        cJSON_Delete(body);
         return false;
     }
 
-    ESP_LOGD(TAG, "Freeing memory...");
-    cJSON_Delete(message);
-
+    cJSON_Delete(body);
     return true;
-}
-
-// TODO: Refactor to accept a cJSON object instead of a topic and payload
-// Creates a JSON message from the provided topic and payload, and transmits it over UART
-void sendMessageSerial(const char* topic, const char* payload) {
-    static const char* TAG = "sendMessage";
-    static const char newline = '\0';
-
-    // Create the JSON object
-    ESP_LOGD(TAG, "Creating JSON object...");
-    cJSON* jsonObject = cJSON_CreateObject();
-    cJSON_AddStringToObject(jsonObject, "topic", topic);
-    cJSON_AddStringToObject(jsonObject, "payload", payload);
-
-    // Serialize the JSON object to a string
-    ESP_LOGD(TAG, "Serializing JSON object...");
-    const char* jsonStr = cJSON_PrintUnformatted(jsonObject);
-
-    // Check that the serialized JSON string doesn't exceed the buffer size
-    if (strlen(jsonStr) > BUF_SIZE) {
-        ESP_LOGE(TAG, "Serialized JSON string exceeds buffer size");
-        cJSON_Delete(jsonObject);
-        free((void*)jsonStr);
-        return;
-    }
-
-    // Transmit the JSON string over UART
-    ESP_LOGI(TAG, "Transmitting %d bytes: %s", strlen(jsonStr), jsonStr);
-    uart_write_bytes(UART_NUMBER, jsonStr, strlen(jsonStr));
-    uart_write_bytes(UART_NUMBER, &newline, 1);
-
-    // Clean up
-    cJSON_Delete(jsonObject);
-    free((void*)jsonStr);
-}
-
-// Helper function to parse cJSON fields, returns the string value of a given field
-char* parseJsonField(const cJSON* jsonObject, const char* fieldName) {
-    static const char* TAG = "parseJsonField";
-    cJSON* fieldObject = cJSON_GetObjectItemCaseSensitive(jsonObject, fieldName);
-    if (fieldObject == NULL || !cJSON_IsString(fieldObject)) {
-        ESP_LOGE(TAG, "No '%s' field in JSON object or '%s' is not a string", fieldName, fieldName);
-        return NULL;
-    }
-    return fieldObject->valuestring;
-}
-
-// Helper function to parse and validate incoming JSON data
-cJSON* parseAndValidateJson(const char* rawData) {
-    static const char* TAG = "parseAndValidateJson";
-
-    ESP_LOGD(TAG, "Parsing incoming data as JSON...");
-    cJSON* jsonObject = cJSON_Parse(rawData);
-    if (jsonObject == NULL) {
-        ESP_LOGE(TAG, "Failed to parse JSON");
-        return NULL;
-    }
-
-    ESP_LOGD(TAG, "Confirming JSON object contains expected fields...");
-    if (!parseJsonField(jsonObject, "topic") || !parseJsonField(jsonObject, "payload")) {
-        cJSON_Delete(jsonObject);
-        return NULL;
-    }
-
-    return jsonObject;
 }
