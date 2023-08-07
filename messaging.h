@@ -49,25 +49,45 @@ QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue;
 QueueHandle_t incomingSerialQueue, outgoingSerialQueue;
 
 
-// Callbacks
+/*----- Callback Functions -----*/
+// Logs ESP-NOW send status
 void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status);
+
+// Logs ESP-NOW send status
 void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status);
+
+// Interrupts, posts incoming data to incomingESPNowQueue
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 
-// Setup functions
+/*----- Setup Functions -----*/
+// Sets up ESP-NOW, more description TODO
 esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway);
+
+// Sets up UART, more description TODO
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
-// RTOS tasks
+/*----- RTOS Tasks -----*/
+// Receive message structs from outgoingESPNowQueue and sends via ESP-NOW
 void sendESPNowTask(void *pvParameters);
+
+// Receive message structs from outgoingSerialQueue and sends via UART
 void sendSerialTask(void *pvParameters);
+
+// Picks up incoming raw data from incomingESPNowQueue, parses the message body as JSON, and passes to handler
 void receiveESPNowTask (void* pvParameters);
+
+// Picks up incoming raw data from incomingSerialQueue, parses the message body as JSON, and passes to handler
 void receiveSerialTask(void* pvParameters);
+
+// In lieu of ISR, this task posts incoming UART messages directly to the incomingSerialQueue
 void listenSerialDaemon(void* pvParameters);
 
-// Helpers
+/*----- Messaging Functions -----*/
+// Takes raw json body and passes to outbound queue dependent on if MAC was provided
 bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC);
-Message* createMessage(cJSON *body, uint8_t *destinationMAC);
+
+// Takes topic and payload as strings and passes to outbound queue dependent on if MAC was provided
+bool sendMessageTopicPayload(const char* topic, const char* payload, uint8_t *destinationMAC);
 
 #ifdef __cplusplus
 }

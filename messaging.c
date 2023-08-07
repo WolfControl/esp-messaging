@@ -6,15 +6,14 @@ void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     static const char *TAG = "OnESPNowSendDevice";
 
-    ESP_LOGI(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
-
+    ESP_LOGD(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
 }
 
 void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
     static const char *TAG = "OnESPNowSendGateway";
 
-    ESP_LOGI(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
+    ESP_LOGD(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
 }
 
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
@@ -30,7 +29,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
     }
 }
 
-/*---------- Setup functions ----------*/
+/*---------- Setup Functions ----------*/
 
 esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway)
 {
@@ -145,7 +144,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "Starting listener task with abstract handler...");
+    ESP_LOGD(TAG, "Starting receive task with abstract handler...");
     if (pdPASS != xTaskCreate(receiveESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &receiveESPNowTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create listener task");
         return ESP_FAIL;
@@ -190,7 +189,7 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "Starting listener task with abstract handler...");
+    ESP_LOGD(TAG, "Starting receive task with abstract handler...");
     if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveSerialTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
         return ESP_FAIL;
@@ -205,9 +204,8 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
     return ESP_OK;
 }
 
-/*---------- RTOS tasks ----------*/ 
+/*---------- RTOS Tasks ----------*/ 
 
-// Receive message structs from outgoingESPNowQueue and sends via ESP-NOW
 void sendESPNowTask(void *pvParameters)
 {
     static const char *TAG = "sendESPNowTask";
@@ -245,7 +243,6 @@ void sendESPNowTask(void *pvParameters)
     }
 }
 
-// Receive message structs from outgoingSerialQueue and sends via UART
 void sendSerialTask(void *pvParameters)
 {
     static const char *TAG = "sendSerialTask";
@@ -278,7 +275,6 @@ void sendSerialTask(void *pvParameters)
     }
 }
 
-// Picks up incoming raw data from incomingESPNowQueue, parses the message body as JSON, and passes to handler
 void receiveESPNowTask (void* pvParameters)
 {
     static const char *TAG = "receiveESPNowTask";
@@ -304,7 +300,6 @@ void receiveESPNowTask (void* pvParameters)
 
 }
 
-// Picks up incoming raw data from incomingSerialQueue, parses the message body as JSON, and passes to handler
 void receiveSerialTask(void* pvParameters)
 {
     static const char* TAG = "receiveSerialTask";
@@ -323,7 +318,6 @@ void receiveSerialTask(void* pvParameters)
     }
 }
 
-// In lieu of an Interrupt routine like for ESP-NOW, this task posts incoming UART messages directly to the queue
 void listenSerialDaemon(void* pvParameters)
 {
     static const char* TAG = "listenSerialDaemon";
@@ -364,9 +358,8 @@ void listenSerialDaemon(void* pvParameters)
     }
 }
 
-/*---------- Helper functions ----------*/
+/*---------- Messaging Functions ----------*/
 
-// Takes raw json body and passes to outbound queue dependent on if MAC was provided
 bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC) {
     
     Message* outgoingMsg = (Message*) malloc(sizeof(Message));
@@ -387,4 +380,11 @@ bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC) {
 
     cJSON_Delete(body);
     return true;
+}
+
+bool sendMessageTopicPayload(const char* topic, const char* payload, uint8_t *destinationMAC) {
+    cJSON *body = cJSON_CreateObject();
+    cJSON_AddStringToObject(body, "topic", topic);
+    cJSON_AddStringToObject(body, "payload", payload);
+    return sendMessageJSON(body, destinationMAC);
 }
