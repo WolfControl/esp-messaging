@@ -279,21 +279,22 @@ void receiveESPNowTask (void* pvParameters)
 {
     static const char *TAG = "receiveESPNowTask";
     messageHandler handler = (messageHandler)pvParameters;
-    Message* incomingMsg;
+    uint8_t* incomingData;
 
     while (1) {
         ESP_LOGD(TAG, "Waiting for incoming data...");
 
-        if (xQueueReceive(incomingESPNowQueue, &incomingMsg, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingMsg->bodySerialized);
+        if (xQueueReceive(incomingESPNowQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingData->bodySerialized);
 
+            // Convert incomingData from uint8_t* to cJSON
             // TODO: Parsing
 
             // Gateway handler: forward over serial
             // Device handler: process incoming command
 
             ESP_LOGD(TAG, "Passing data to handler...");
-            //onESPNowReceive(incomingMsg, handler);
+            //onESPNowReceive(incomingData, handler);
 
         }
     }
@@ -304,16 +305,16 @@ void receiveSerialTask(void* pvParameters)
 {
     static const char* TAG = "receiveSerialTask";
     messageHandler handler = (messageHandler)pvParameters;
-    Message* incomingMsg;
+    char* incomingData;
 
     while (1) {
-        if (xQueueReceive(incomingSerialQueue, &incomingMsg, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGD(TAG, "Received data from incomingSerialQueue: %s", incomingMsg->bodySerialized);
+        if (xQueueReceive(incomingSerialQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
+            ESP_LOGD(TAG, "Received data from incomingSerialQueue: %s", incomingData->bodySerialized);
 
             // TODO: Parsing
 
             ESP_LOGD(TAG, "Passing data to handler...");
-            //onSerialReceive(incomingMsg, handler);
+            //onSerialReceive(incomingData, handler);
         }
     }
 }
