@@ -29,93 +29,140 @@ extern "C" {
 #define LISTENER_TASK_DELAY_MS 10
 #define UART_READ_TIMEOUT_MS 100
 
-TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 
-// Struct for passing messages between tasks and devices
-typedef struct {
-    char* bodySerialized;       // Serialized JSON
-    size_t size;                // Size of serialized JSON
-    uint8_t destinationMAC[5];  // MAC address of destination device or NULL for serial
-} Message;
+// Defining the user's message handler function to be used with setupESPNow and setupSerial
+// The messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
+typedef void (*messageHandler)(cJSON* incomingMessage);
 
-// Defining the user's message handler function
-// setupESPNow and setupSerial both take a messageHandler function pointer
-// The messageHandler can be any user defined function so long as it takes a Message* as its only argument
-typedef void (*messageHandler)(Message* incomingMessage);
+const char* networkName;
+const char* zoneName;
+const char* gatewayName;
+const char* deviceName;
+const char* nodeName;
 
 esp_now_peer_info_t gatewayInfo;
 
-const char* bridgeName;
-const char* deviceName;
-const char* networkName;
+TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 
 QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue;
 QueueHandle_t incomingSerialQueue, outgoingSerialQueue;
 
 
-/*----- Callback Functions -----*/
+/*--------------------------------------*/
+/*---------- Callbacks & ISRs ----------*/
+/*--------------------------------------*/
+
 // Logs ESP-NOW send status
 void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 // Logs ESP-NOW send status
 void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status);
 
-// Interrupts, posts incoming data to incomingESPNowQueue
+// Interrupts, posts incoming messages to incomingESPNowQueue as uint8_t pointer
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 
-/*----- Setup Functions -----*/
+/*--------------------------------------*/
+/*----------- Setup Functions ----------*/
+/*--------------------------------------*/
+
 // Sets up ESP-NOW, more description TODO
 esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway);
 
 // Sets up UART, more description TODO
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
-/*----- RTOS Tasks -----*/
-// Receive message structs from outgoingESPNowQueue and sends serialized JSON body via ESP-NOW
+/*--------------------------------------*/
+/*------------- RTOS Tasks -------------*/
+/*--------------------------------------*/
+
+/**
+ * Receive serialized JSON body from outgoingESPNowQueue
+ * Sends via ESP-NOW to MAC address injected into message body by sendMessageESPNow
+*/
 void sendESPNowTask(void *pvParameters);
 
-// Receive message structs from outgoingSerialQueue and sends serialized JSON body via UART
+/**
+ * Receive serialized JSON body from outgoingSerialQueue
+ * Sends via UART
+*/
 void sendSerialTask(void *pvParameters);
 
-// Picks up incoming raw data from incomingESPNowQueue as uint8_t pointer, parses the message body as JSON, and passes to handler
+/**
+ * Receive serialized JSON body from incomingESPNowQueue as uint8_t pointer
+ * Parses as JSON and passes to handler
+*/
 void receiveESPNowTask (void* pvParameters);
 
-// Picks up raw data from incomingSerialQueue as char pointer, parses to a JSON body, and passes to handler
+/**
+ * Receive serialized JSON body from incomingSerialQueue as char pointer
+ * Parses as JSON and passes to handler
+*/
 void receiveSerialTask(void* pvParameters);
 
-// In lieu of ISR, this task posts incoming UART messages directly to the incomingSerialQueue as a void pointer to a char array
+/**
+ * Listens for incoming messages on UART
+ * Posts incoming messages to incomingSerialQueue as char pointer
+*/
 void listenSerialDaemon(void* pvParameters);
 
-/*----- Messaging Helpers -----*/
-// Takes raw json body and passes to outbound queue dependent on if MAC was provided
-bool sendMessageJSON(cJSON *body, uint8_t *destinationMAC);
+/*--------------------------------------*/
+/*-------- Messaging Functions ---------*/
+/*--------------------------------------*/
 
-// Takes raw json body and passes to outgoingSerialQueue
-bool sendJSONSerial(cJSON *body);
+/** 
+ * To be used in a messageHandler on ESPNow and MQTT gateways
+ * Takes a cJSON object already parsed by receiveSerialTask or receiveESPNowTask (or user created in the case of sendCommand)
+ * Re-serializes and posts char array to outgoingSerialQueue
+ * Does not check or modify the message in any way
+*/
+esp_err_t sendMessageSerial(cJSON* body);
 
-// Takes raw json body and passes to outgoingESPNowQueue
-bool sendJSONESPNow(cJSON *body, uint8_t *destinationMAC);
+/**
+ * To be used on devices for sending readings/logs as well as on ESPNow Gateways for sending commands
+ * takes a cJSON object and MAC address to send to
+ * Adds MAC to json body, serializes to a char array, and posts to outgoingESPNowQueue
+ * Is there a better way to do this? Previously used a message struct that had MAC and cJSON pointer but simplifying for now
+*/
+esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* targetAddress);
 
-// Takes topic and payload as strings and passes to outbound queue dependent on if MAC was provided
-bool sendMessageTopicPayload(const char* topic, const char* payload, uint8_t *destinationMAC);
+/*--------------------------------------*/
+/*---------- Helper Functions ----------*/
+/*--------------------------------------*/
 
+/**
+ * Helper function for sendLog, sendReadings, and sendCommand
+ * returns a cJSON object body with deviceid and timestamp
+*/
+cJSON* createMessageBody();
 
-/*----- User Functions -----*/
+/*--------------------------------------*/
+/*----------- User Functions -----------*/
+/*--------------------------------------*/
 
-// Takes an array of floats, creates a comma separated string, compiles a cJSON object with id, timestamp, and readings, sends serialized JSON to the gatewayMAC via ESP-NOW 
-esp_err_t sendReadings(float* readings, size_t numReadings);
-
-// Takes a string, compiles a cJSON object with id, timestamp, and log, sends serialized to the gatewayMAC via ESP-NOW
+/**
+ * Called on device
+ * Takes a string, compiles a cJSON object with id, timestamp, and log
+ * Sends serialized JSON to the gatewayMAC via ESP-NOW
+*/
 esp_err_t sendLog(char* log);
 
-// What does this need to take? Where will I pick apart MQTT topic and payload to find device id and command?
-esp_err_t sendCommand(char* command);
+/**
+ * Called on device
+ * Takes array of sensor readings and size, compiles a cJSON object with id, timestamp, and readings
+ * Sends serialized JSON to the gatewayMAC via ESP-NOW
+*/
+esp_err_t sendReadings(float* readings, size_t numReadings);
 
+/**
+ * Called on MQTT gateway
+ * Takes a target deviceId, node, and command, compiles a cJSON object with id, timestamp, and command
+ * Sends serialized JSON to the ESP-NOW gateway via UART
+*/
+esp_err_t sendCommand(char* command, uint8_t* targetDeviceId);
 
-
+/*--------------------------------------*/
 
 /*
-
 RTD: 25.0 // deg C
 pH: 7.0 // logaritmic scale
 DO: 400 // mg/L
@@ -124,24 +171,19 @@ EC: 1.2 // mS/cm
 JSON structures for messages
 
 Readings
-    Id: 12345 // Device ID
-    T: 1234567890 // Unix timestamp of when reading was taken and sent from device
-    t: "reading" // Type of message
-    r: [25.0, 7.0, 400, 1.2]
-    s: ["RTD", "pH", "DO", "EC"]
-
+    id: 12345 // Device ID
+    t: 1234567890 // Unix timestamp of when reading was taken and sent from device
+    r: [25.0, 7.0, 400, 1.2] // readings
 
 Commands
     id: 12345 // ID of device to receive command
-    T: 1234567890 // Unix timestamp of when the command was first sent from the MQTT gateway
-    t: "command" // Type of message
-    m: "PH,cal,mid,7.0" // cmd to pass to EZO method
+    t: 1234567890 // Unix timestamp of when the command was first sent from the MQTT gateway
+    c: "PH,cal,mid,7.0" // cmd to pass to EZO method for object "PH"
 
 Logs
     id: 12345 // Device ID
-    T: 1234567890 // Unix timestamp of when log was sent from device
-    t: "log" // Type of message
-    m: "Message" // Message
+    t: 1234567890 // Unix timestamp of when log was sent from device
+    l: "Pump3 ERR" // log message
 
 */
 
