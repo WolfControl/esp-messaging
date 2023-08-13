@@ -236,16 +236,13 @@ void sendESPNowTask(void *pvParameters)
             ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingData);
             len = strlen(outgoingData) + 1;
 
+            //ESP_LOGD(TAG, "Extracting destination MAC from body...");
             // TODO: Get MAC somewhere else
-            ESP_LOGD(TAG, "Sending packet to destination MAC: %02x:%02x:%02x:%02x:%02x:%02x", 
-                outgoingData->destinationMAC[0], 
-                outgoingData->destinationMAC[1], 
-                outgoingData->destinationMAC[2], 
-                outgoingData->destinationMAC[3], 
-                outgoingData->destinationMAC[4], 
-                outgoingData->destinationMAC[5]);
-            
-            esp_err_t result = esp_now_send(outgoingData->destinationMAC, (uint8_t *) outgoingData, len); 
+
+            // Hardcoded for now
+            uint8_t destinationMAC[6] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
+
+            esp_err_t result = esp_now_send(destinationMAC, (uint8_t *) outgoingData, len); 
 
             if (result == ESP_OK) {
                 ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingData);
@@ -397,11 +394,13 @@ esp_err_t sendMessageSerial(cJSON* body)
 
 }
 
-esp_err_t sendMessageESPNow(cJSON* body, uint8_t* destinationMAC)
+esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 {
     static const char* TAG = "sendMessageESPNow";
     char* outgoingData;
-    int len;
+
+    ESP_LOGD(TAG, "Adding destination MAC to body...");
+    cJSON_AddStringToObject(body, "m", destinationMAC);
 
     ESP_LOGD(TAG, "Serializing JSON...");
     outgoingData = cJSON_PrintUnformatted(body);
@@ -436,30 +435,37 @@ esp_err_t sendLog(char* logMessage)
 {
     static const char* TAG = "sendLog";
     cJSON* body = createMessageBody();
+    esp_err_t res;
 
     ESP_LOGD(TAG, "Adding log message to body...");
     cJSON_AddStringToObject(body, "l", logMessage);
 
     // if on ESPNow gateway, return sendMessageSerial?
-    return sendMessageESPNow(body, gatewayMAC);
+    res = sendMessageESPNow(body, gatewayMAC);
+    return res;
 
 }
 
-esp_err_t sendReadings(float* readings, size_t numReadings)
+esp_err_t sendReadings(float* readings, int numReadings)
 {
     static const char* TAG = "sendReadings";
     cJSON* body = createMessageBody();
     cJSON* r = cJSON_CreateArray();
+    esp_err_t res;
+
 
     ESP_LOGD(TAG, "Adding readings to cJSON array...");
     for (int i = 0; i < numReadings; i++) {
         cJSON_AddItemToArray(r, cJSON_CreateNumber(readings[i]));
     }
 
+    // TODO: Using this function wrong, check docs
+    // https://github.com/DaveGamble/cJSON/blob/master/tests/readme_examples.c#L135
     ESP_LOGD(TAG, "Adding array to body...");
     cJSON_AddArrayToObject(body, "r", r);
 
-    return sendMessageESPNow(body, gatewayMAC);
+    res = sendMessageESPNow(body, gatewayMAC);
+    return res;
 
 }
 
@@ -467,12 +473,14 @@ esp_err_t sendCommand(char* command, uint8_t* targetDeviceId)
 {
     static const char* TAG = "sendCommand";
     cJSON* body = createMessageBody();
+    esp_err_t res;
 
     ESP_LOGD(TAG, "Adding command to body...");
     cJSON_AddStringToObject(body, "c", command);
 
-    return sendMessageSerial(body);
-
+    res = sendMessageSerial(body);
+    return res;
+    
 }
 
 // EoF

@@ -123,7 +123,7 @@ esp_err_t sendMessageSerial(cJSON* body);
  * Adds MAC to json body, serializes to a char array, and posts to outgoingESPNowQueue
  * Is there a better way to do this? Previously used a message struct that had MAC and cJSON pointer but simplifying for now
 */
-esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* targetAddress);
+esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
 /*--------------------------------------*/
 /*---------- Helper Functions ----------*/
@@ -151,7 +151,7 @@ esp_err_t sendLog(char* log);
  * Takes array of sensor readings and size, compiles a cJSON object with id, timestamp, and readings
  * Sends serialized JSON to the gatewayMAC via ESP-NOW
 */
-esp_err_t sendReadings(float* readings, size_t numReadings);
+esp_err_t sendReadings(float* readings, int numReadings);
 
 /**
  * Called on MQTT gateway
