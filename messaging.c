@@ -230,13 +230,14 @@ void sendESPNowTask(void *pvParameters)
     int len;
 
     while(1){
-        // Receive the Message struct from the queue
+        // Receive the serialized JSON from the queue
         if (xQueueReceive(outgoingESPNowQueue, &outgoingData, portMAX_DELAY) == pdTRUE)
         {
             ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingData);
             len = strlen(outgoingData) + 1;
 
             //ESP_LOGD(TAG, "Extracting destination MAC from body...");
+            // Parse, extract key, and delete
             // TODO: Get MAC somewhere else
 
             // Hardcoded for now

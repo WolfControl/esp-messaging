@@ -112,7 +112,7 @@ void listenSerialDaemon(void* pvParameters);
 /** 
  * To be used in a messageHandler on ESPNow and MQTT gateways
  * Takes a cJSON object already parsed by receiveSerialTask or receiveESPNowTask (or user created in the case of sendCommand)
- * Re-serializes and posts char array to outgoingSerialQueue
+ * Serializes and posts char array to outgoingSerialQueue
  * Does not check or modify the message in any way
 */
 esp_err_t sendMessageSerial(cJSON* body);
