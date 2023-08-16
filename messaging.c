@@ -230,7 +230,7 @@ void sendESPNowTask(void *pvParameters)
     int len;
 
     while(1){
-        // Receive the Message struct from the queue
+        // Receive the serialized JSON from the queue
         if (xQueueReceive(outgoingESPNowQueue, &outgoingData, portMAX_DELAY) == pdTRUE)
         {
             ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingData);
