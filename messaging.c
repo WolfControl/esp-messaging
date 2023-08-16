@@ -138,7 +138,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
 
     ESP_LOGD(TAG, "Creating outgoingESPNowQueue...");
-    outgoingESPNowQueue = xQueueCreate(10, sizeof(cJSON*));
+    outgoingESPNowQueue = xQueueCreate(10, sizeof(ESPNowMessage*));
     if (outgoingESPNowQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingESPNowQueue");
         return ESP_FAIL;
@@ -157,7 +157,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "Sensor setup complete");
+    ESP_LOGD(TAG, "ESPNow setup complete");
     return ESP_OK;
 }
 
@@ -236,9 +236,6 @@ void sendESPNowTask(void *pvParameters)
             ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingData);
             len = strlen(outgoingData) + 1;
 
-            //ESP_LOGD(TAG, "Extracting destination MAC from body...");
-            // TODO: Get MAC somewhere else
-
             // Hardcoded for now
             uint8_t destinationMAC[6] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
 
@@ -253,6 +250,35 @@ void sendESPNowTask(void *pvParameters)
 
             // Free the packet string
             free(outgoingData);    
+        }
+    }
+}
+
+
+void sendESPNowTask(void *pvParameters)
+{
+    static const char *TAG = "sendESPNowTask";
+    ESPNowMessage outgoingMessage;
+
+    while(1){
+        // Receive the Message struct from the queue
+        if (xQueueReceive(outgoingESPNowQueue, &outgoingMessage, portMAX_DELAY) == pdTRUE)
+        {
+            ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingMessage.bodyserialized);
+
+            int len = strlen(outgoingMessage.bodyserialized) + 1;
+
+            esp_err_t result = esp_now_send(outgoingMessage.destinationMAC, (uint8_t *) outgoingMessage.bodyserialized, len); 
+
+            if (result == ESP_OK) {
+                ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingMessage.bodyserialized);
+            }
+            else {
+                ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
+            }
+
+            // Free the packet string
+            free(outgoingMessage.bodyserialized);    
         }
     }
 }
@@ -397,18 +423,20 @@ esp_err_t sendMessageSerial(cJSON* body)
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 {
     static const char* TAG = "sendMessageESPNow";
-    char* outgoingData;
-
-    ESP_LOGD(TAG, "Adding destination MAC to body...");
-    cJSON_AddStringToObject(body, "m", destinationMAC);
+    char* bodyserialized;
+    ESPNowMessage outgoingMessage;
 
     ESP_LOGD(TAG, "Serializing JSON...");
-    outgoingData = cJSON_PrintUnformatted(body);
+    bodyserialized = cJSON_PrintUnformatted(body);
+
+    ESP_LOGD(TAG, "Creating ESPNowMessage...");
+    outgoingMessage.bodyserialized = bodyserialized;
+    memcpy(outgoingMessage.destinationMAC, destinationMAC, ESP_NOW_ETH_ALEN);
 
     ESP_LOGD(TAG, "Posting to outgoingESPNowQueue...");
-    if (xQueueSend(outgoingESPNowQueue, &outgoingData, 0) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to send packet to outgoingESPNowQueue queue");
-        free(outgoingData);
+    if (xQueueSend(outgoingESPNowQueue, &outgoingMessage, 0) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to send struct to outgoingESPNowQueue queue");
+        free(bodyserialized);
         cJSON_Delete(body);
         return ESP_FAIL;
     }
@@ -431,40 +459,38 @@ cJSON* createMessageBody()
 
 /*---------- User Functions ----------*/
 
-esp_err_t sendLog(char* logMessage)
+// TODO: Refactor these to take MAC address either as a param or move the gateway mac from main.h to messaging.h
+
+esp_err_t sendLog(char* logMessage, uint8_t* destinationMAC)
 {
     static const char* TAG = "sendLog";
-    cJSON* body = createMessageBody();
     esp_err_t res;
+    cJSON* body = createMessageBody();
 
     ESP_LOGD(TAG, "Adding log message to body...");
     cJSON_AddStringToObject(body, "l", logMessage);
 
     // if on ESPNow gateway, return sendMessageSerial?
-    res = sendMessageESPNow(body, gatewayMAC);
+    res = sendMessageESPNow(body, destinationMAC);
     return res;
 
 }
 
-esp_err_t sendReadings(float* readings, int numReadings)
+esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC)
 {
     static const char* TAG = "sendReadings";
-    cJSON* body = createMessageBody();
-    cJSON* r = cJSON_CreateArray();
     esp_err_t res;
+    cJSON* body = createMessageBody();
 
-
-    ESP_LOGD(TAG, "Adding readings to cJSON array...");
+    ESP_LOGD(TAG, "Adding readings to body...");
+    cJSON* readingsArray = cJSON_CreateArray();
     for (int i = 0; i < numReadings; i++) {
-        cJSON_AddItemToArray(r, cJSON_CreateNumber(readings[i]));
+        cJSON_AddItemToArray(readingsArray, cJSON_CreateNumber(readings[i]));
     }
 
-    // TODO: Using this function wrong, check docs
-    // https://github.com/DaveGamble/cJSON/blob/master/tests/readme_examples.c#L135
-    ESP_LOGD(TAG, "Adding array to body...");
-    cJSON_AddArrayToObject(body, "r", r);
+    cJSON_AddItemToObject(body, "r", readingsArray);
 
-    res = sendMessageESPNow(body, gatewayMAC);
+    res = sendMessageESPNow(body, destinationMAC);
     return res;
 
 }
@@ -472,8 +498,8 @@ esp_err_t sendReadings(float* readings, int numReadings)
 esp_err_t sendCommand(char* command, uint8_t* targetDeviceId)
 {
     static const char* TAG = "sendCommand";
-    cJSON* body = createMessageBody();
     esp_err_t res;
+    cJSON* body = createMessageBody();
 
     ESP_LOGD(TAG, "Adding command to body...");
     cJSON_AddStringToObject(body, "c", command);
