@@ -34,6 +34,12 @@ extern "C" {
 // The messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
 typedef void (*messageHandler)(cJSON* incomingMessage);
 
+// Used internally for outgoing ESP-NOW messages
+typedef struct {
+    char* bodyserialized;
+    uint8_t destinationMAC[6];
+} ESPNowMessage;
+
 const char* networkName;
 const char* zoneName;
 const char* gatewayName;
@@ -65,10 +71,34 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 /*----------- Setup Functions ----------*/
 /*--------------------------------------*/
 
-// Sets up ESP-NOW, more description TODO
+/**
+ * @brief Sets up components necessary for messaging via ESP-NOW.
+ * 
+ * @param handler User defined function to handle incoming messages. Expects a cJSON pointer.
+ * 
+ * @param gatewayAddress MAC address of the gateway device.
+ * 
+ * @param isGateway Boolean to indicate if this device is the gateway.
+ * 
+ * @return ESP_OK if successful, ESP_FAIL if not.
+ * 
+ * @note Sets up wifi stack, sets callbacks, creates queues and tasks.
+*/
 esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway);
 
-// Sets up UART, more description TODO
+/**
+ * @brief Sets up components necessary for messaging via UART.
+ * 
+ * @param handler User defined function to handle incoming messages. Expects a cJSON pointer.
+ * 
+ * @param txPin GPIO pin to use for UART TX.
+ * 
+ * @param rxPin GPIO pin to use for UART RX.
+ * 
+ * @return ESP_OK if successful, ESP_FAIL if not.
+ * 
+ * @note Sets up UART driver, event queues, and tasks.
+*/
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
 /*--------------------------------------*/
@@ -76,32 +106,39 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 /*--------------------------------------*/
 
 /**
- * Receive serialized JSON body from outgoingESPNowQueue
- * Sends via ESP-NOW to MAC address injected into message body by sendMessageESPNow
+ * @brief RTOS Task that receives outgoing messages from outgoingESPNowQueue and sends them via ESP-NOW.
+ * 
+ * @note This is janky, refactor
+ * @note Sends via ESP-NOW to MAC address injected into message body by sendMessageESPNow
+ * @note Receives data as a char pointer (JSON is serialized in sendMessageESPNow)
 */
 void sendESPNowTask(void *pvParameters);
 
 /**
- * Receive serialized JSON body from outgoingSerialQueue
- * Sends via UART
+ * @brief RTOS Task that receives outgoing messages from outgoingSerialQueue and sends them via UART.
+ * 
+ * @note Receives data as char pointer (JSON is serialized in sendMessageSerial)
 */
 void sendSerialTask(void *pvParameters);
 
 /**
- * Receive serialized JSON body from incomingESPNowQueue as uint8_t pointer
- * Parses as JSON and passes to handler
+ * @brief RTOS Task that receives data from incomingESPNowQueue and passes to user defined handler.
+ * 
+ * @note receives data as uint8_t pointer and parses to cJSON object
 */
 void receiveESPNowTask (void* pvParameters);
 
 /**
- * Receive serialized JSON body from incomingSerialQueue as char pointer
- * Parses as JSON and passes to handler
+ * @brief RTOS Task that receives data from incomingSerialQueue and passes to user defined handler.
+ *
+ * @note receives data as char pointer and parses to cJSON object
 */
 void receiveSerialTask(void* pvParameters);
 
 /**
- * Listens for incoming messages on UART
- * Posts incoming messages to incomingSerialQueue as char pointer
+ * @brief RTOS task that listens for incoming messages on UART and posts them to incomingSerialQueue.
+ * 
+ * @note Posts data as char pointer
 */
 void listenSerialDaemon(void* pvParameters);
 
@@ -109,20 +146,26 @@ void listenSerialDaemon(void* pvParameters);
 /*-------- Messaging Functions ---------*/
 /*--------------------------------------*/
 
-/** 
- * To be used in a messageHandler on ESPNow and MQTT gateways
- * Takes a cJSON object already parsed by receiveSerialTask or receiveESPNowTask (or user created in the case of sendCommand)
- * Re-serializes and posts char array to outgoingSerialQueue
- * Does not check or modify the message in any way
-*/
+/**
+ * @brief Re-serializes a cJSON object and posts it to outgoingSerialQueue.
+ * 
+ * @param body A cJSON object already parsed by receiveSerialTask or receiveESPNowTask.
+ * 
+ * @return ESP_OK if successful, ESP_FAIL if not.
+ */
 esp_err_t sendMessageSerial(cJSON* body);
 
 /**
- * To be used on devices for sending readings/logs as well as on ESPNow Gateways for sending commands
- * takes a cJSON object and MAC address to send to
- * Adds MAC to json body, serializes to a char array, and posts to outgoingESPNowQueue
- * Is there a better way to do this? Previously used a message struct that had MAC and cJSON pointer but simplifying for now
-*/
+ * @brief Serializes a cJSON object, creates ESPNowMessage struct with gatewayMAC, and posts it to outgoingESPNowQueue.
+ * 
+ * @param body A cJSON object.
+ * 
+ * @param destinationMAC MAC address to send to.
+ * 
+ * @return ESP_OK if successful, ESP_FAIL if not.
+ * 
+ * @note Is there a better way to do this? Previously used a message struct that had MAC and cJSON pointer but simplifying for now.
+ */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
 /*--------------------------------------*/
@@ -130,8 +173,9 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 /*--------------------------------------*/
 
 /**
- * Helper function for sendLog, sendReadings, and sendCommand
- * returns a cJSON object body with deviceid and timestamp
+ * @brief Helper function for sendLog, sendReadings, and sendCommand
+ * 
+ * @return cJSON object body with deviceid and timestamp
 */
 cJSON* createMessageBody();
 
@@ -140,18 +184,33 @@ cJSON* createMessageBody();
 /*--------------------------------------*/
 
 /**
- * Called on device
- * Takes a string, compiles a cJSON object with id, timestamp, and log
- * Sends serialized JSON to the gatewayMAC via ESP-NOW
+ * @brief Sends a log message to the gateway via ESP-NOW.
+ *
+ * @param log String to send to gateway
+ * 
+ * @param destinationMAC MAC address to send to
+ * 
+ * @return ESP_OK if successful, error code as esp_err_t if not.
+ *
+ * @note adds deviceID and timestamp to JSON body
 */
-esp_err_t sendLog(char* log);
+esp_err_t sendLog(char* log, uint8_t* destinationMAC);
 
 /**
- * Called on device
- * Takes array of sensor readings and size, compiles a cJSON object with id, timestamp, and readings
- * Sends serialized JSON to the gatewayMAC via ESP-NOW
+ * @brief Sends an array of sensor readings to the gateway via ESP-NOW.
+ * 
+ * @param readings Array of sensor readings
+ * 
+ * @param numReadings Number of readings in array
+ * 
+ * @param destinationMAC MAC address to send to
+ * 
+ * @return ESP_OK if successful, error code as esp_err_t if not.
+ * 
+ * @note adds deviceID and timestamp to JSON body
+ * 
 */
-esp_err_t sendReadings(float* readings, int numReadings);
+esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC);
 
 /**
  * Called on MQTT gateway
