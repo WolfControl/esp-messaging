@@ -298,8 +298,7 @@ void receiveESPNowTask (void* pvParameters)
             incomingJSON = cJSON_Parse(incomingDataChar);
 
             ESP_LOGD(TAG, "Passing data to handler...");
-            // Gateway handler: forward over serial
-            // Device handler: process incoming command
+            handler(incomingJSON);
         }
     }
 
@@ -321,6 +320,7 @@ void receiveSerialTask(void* pvParameters)
             incomingJSON = cJSON_Parse(incomingData);
 
             ESP_LOGD(TAG, "Passing data to handler...");
+            handler(incomingJSON);
         }
     }
 }
