@@ -226,52 +226,20 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
 void sendESPNowTask(void *pvParameters)
 {
     static const char *TAG = "sendESPNowTask";
-    char* outgoingData;
-    int len;
-
-    while(1){
-        // Receive the serialized JSON from the queue
-        if (xQueueReceive(outgoingESPNowQueue, &outgoingData, portMAX_DELAY) == pdTRUE)
-        {
-            ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingData);
-            len = strlen(outgoingData) + 1;
-
-            // Hardcoded for now
-            uint8_t destinationMAC[6] = {0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC};
-
-            esp_err_t result = esp_now_send(destinationMAC, (uint8_t *) outgoingData, len); 
-
-            if (result == ESP_OK) {
-                ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingData);
-            }
-            else {
-                ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
-            }
-
-            // Free the packet string
-            free(outgoingData);    
-        }
-    }
-}
-
-
-void sendESPNowTask(void *pvParameters)
-{
-    static const char *TAG = "sendESPNowTask";
     ESPNowMessage outgoingMessage;
 
     while(1){
         // Receive the Message struct from the queue
         if (xQueueReceive(outgoingESPNowQueue, &outgoingMessage, portMAX_DELAY) == pdTRUE)
         {
-            ESP_LOGD(TAG, "Received message from outgoingESPNowQueue: %s", outgoingMessage.bodyserialized);
+            ESP_LOGI(TAG, "Received message from outgoingESPNowQueue: %s", outgoingMessage.bodyserialized);
 
             int len = strlen(outgoingMessage.bodyserialized) + 1;
 
             esp_err_t result = esp_now_send(outgoingMessage.destinationMAC, (uint8_t *) outgoingMessage.bodyserialized, len); 
 
             if (result == ESP_OK) {
-                ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingMessage.bodyserialized);
+                ESP_LOGI(TAG, "Published packet to ESP-NOW: %s", outgoingMessage.bodyserialized);
             }
             else {
                 ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
@@ -326,7 +294,8 @@ void receiveESPNowTask (void* pvParameters)
             ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingData);
 
             ESP_LOGD(TAG, "Parsing JSON...");
-            incomingJSON = cJSON_Parse(incomingData);
+            char* incomingDataChar = (char*)incomingData;
+            incomingJSON = cJSON_Parse(incomingDataChar);
 
             ESP_LOGD(TAG, "Passing data to handler...");
             // Gateway handler: forward over serial
@@ -482,7 +451,7 @@ esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC
     esp_err_t res;
     cJSON* body = createMessageBody();
 
-    ESP_LOGD(TAG, "Adding readings to body...");
+    ESP_LOGI(TAG, "Adding readings to body...");
     cJSON* readingsArray = cJSON_CreateArray();
     for (int i = 0; i < numReadings; i++) {
         cJSON_AddItemToArray(readingsArray, cJSON_CreateNumber(readings[i]));
