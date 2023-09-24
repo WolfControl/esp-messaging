@@ -37,7 +37,7 @@ typedef void (*messageHandler)(cJSON* incomingMessage);
 // Used internally for outgoing ESP-NOW messages
 typedef struct {
     char* bodyserialized;
-    uint8_t destinationMAC[6];
+    uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
 const char* networkName;
