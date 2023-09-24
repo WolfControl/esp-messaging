@@ -138,7 +138,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
 
     ESP_LOGD(TAG, "Creating outgoingESPNowQueue...");
-    outgoingESPNowQueue = xQueueCreate(10, sizeof(ESPNowMessage*));
+    outgoingESPNowQueue = xQueueCreate(10, sizeof(ESPNowMessage));
     if (outgoingESPNowQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingESPNowQueue");
         return ESP_FAIL;
@@ -232,7 +232,9 @@ void sendESPNowTask(void *pvParameters)
         // Receive the Message struct from the queue
         if (xQueueReceive(outgoingESPNowQueue, &outgoingMessage, portMAX_DELAY) == pdTRUE)
         {
+
             ESP_LOGI(TAG, "Received message from outgoingESPNowQueue: %s", outgoingMessage.bodyserialized);
+            ESP_LOGI(TAG, "Sending to %02x:%02x:%02x:%02x:%02x:%02x", outgoingMessage.destinationMAC[0], outgoingMessage.destinationMAC[1], outgoingMessage.destinationMAC[2], outgoingMessage.destinationMAC[3], outgoingMessage.destinationMAC[4], outgoingMessage.destinationMAC[5]);
 
             int len = strlen(outgoingMessage.bodyserialized) + 1;
 
@@ -400,6 +402,8 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 
     ESP_LOGD(TAG, "Creating ESPNowMessage...");
     outgoingMessage.bodyserialized = bodyserialized;
+
+    ESP_LOGD(TAG, "Copying destination MAC address to struct...");
     memcpy(outgoingMessage.destinationMAC, destinationMAC, ESP_NOW_ETH_ALEN);
 
     ESP_LOGD(TAG, "Posting to outgoingESPNowQueue...");
