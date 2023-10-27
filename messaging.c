@@ -396,7 +396,7 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
     cJSON_Delete(body);
 
     ESP_LOGD(TAG, "Copying destination MAC address to ESPNowMessage struct...");
-    outgoingMessage.destinationMAC = destinationMAC;
+    memcpy(outgoingMessage.destinationMAC, destinationMAC, ESP_NOW_ETH_ALEN);
 
     ESP_LOGD(TAG, "Posting to outgoingESPNowQueue...");
     if (xQueueSend(outgoingESPNowQueue, &outgoingMessage, 0) != pdTRUE) {
