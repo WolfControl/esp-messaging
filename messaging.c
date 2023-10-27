@@ -137,7 +137,7 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
 
     ESP_LOGD(TAG, "Creating outgoingESPNowQueue...");
-    outgoingESPNowQueue = xQueueCreate(10, sizeof(ESPNowMessage*));
+    outgoingESPNowQueue = xQueueCreate(10, sizeof(ESPNowMessage));
     if (outgoingESPNowQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingESPNowQueue");
         return ESP_FAIL;
@@ -192,7 +192,7 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
     }
 
     ESP_LOGD(TAG, "Creating outgoingSerialQueue...");
-    outgoingSerialQueue = xQueueCreate(10, sizeof(SerialMessage*));
+    outgoingSerialQueue = xQueueCreate(10, sizeof(SerialMessage));
     if (outgoingSerialQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingSerialQueue");
         return ESP_FAIL;
