@@ -40,11 +40,6 @@ typedef struct {
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
-// Used internally for outgoing UART messages
-typedef struct {
-    char* bodyserialized;
-} SerialMessage;
-
 const char* networkName;
 const char* zoneName;
 const char* gatewayName;

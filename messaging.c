@@ -192,7 +192,7 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
     }
 
     ESP_LOGD(TAG, "Creating outgoingSerialQueue...");
-    outgoingSerialQueue = xQueueCreate(10, sizeof(SerialMessage));
+    outgoingSerialQueue = xQueueCreate(10, sizeof(char*));
     if (outgoingSerialQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingSerialQueue");
         return ESP_FAIL;
@@ -255,29 +255,29 @@ void sendESPNowTask(void *pvParameters)
 void sendSerialTask(void *pvParameters)
 {
     static const char *TAG = "sendSerialTask";
-    SerialMessage outgoingMessage;
+    char* bodySerialized;
     static const char newline = '\0';
 
     while(1) {
         ESP_LOGD(TAG, "Waiting for outgoing message...");
 
-        if (xQueueReceive(outgoingSerialQueue, &outgoingMessage, portMAX_DELAY) == pdTRUE)
+        if (xQueueReceive(outgoingSerialQueue, &bodySerialized, portMAX_DELAY) == pdTRUE)
         {
 
-            ESP_LOGI(TAG, "Received message from outgoingSerialQueue: %s", outgoingMessage.bodyserialized);
-            int len = strlen(outgoingMessage.bodyserialized) + 1;
+            ESP_LOGI(TAG, "Received message from outgoingSerialQueue: %s", bodySerialized);
+            int len = strlen(bodySerialized) + 1;
 
             if (len > BUF_SIZE) {
                 ESP_LOGE(TAG, "Serialized JSON string exceeds buffer size");
-                free(outgoingMessage.bodyserialized);
+                free(bodySerialized);
                 continue;
             }
 
             ESP_LOGI(TAG, "Sending packet to UART...");
-            uart_write_bytes(UART_NUMBER, outgoingMessage.bodyserialized, len);
+            uart_write_bytes(UART_NUMBER, bodySerialized, len);
             uart_write_bytes(UART_NUMBER, &newline, 1);
 
-            free(outgoingMessage.bodyserialized);    
+            free(bodySerialized);    
         }
     }
 }
@@ -371,15 +371,22 @@ void listenSerialDaemon(void* pvParameters)
 esp_err_t sendMessageSerial(cJSON* body)
 {
     static const char* TAG = "sendMessageSerial";
-    SerialMessage outgoingMessage;
+    char* bodySerialized;
 
-    ESP_LOGD(TAG, "Creating SerialMessage...");
-    outgoingMessage.bodyserialized = cJSON_PrintUnformatted(body);
-    cJSON_Delete(body);
+    // This is causing panic as bodySerialized isn't valid once picked up by sendSerialTask
+    // How to allocate memory for this?
+
+    ESP_LOGD(TAG, "Serializing JSON...");
+    bodySerialized = cJSON_PrintUnformatted(body);
+    if (bodySerialized == NULL) {
+        ESP_LOGE(TAG, "Failed to serialize JSON");
+        return ESP_FAIL;
+    }
 
     ESP_LOGI(TAG, "Posting to outgoingSerialQueue...");
-    if (xQueueSend(outgoingSerialQueue, &outgoingMessage, 0) != pdTRUE) {
+    if (xQueueSend(outgoingSerialQueue, &bodySerialized, 0) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send struct to outgoingSerialQueue queue");
+        free(bodySerialized);
         return ESP_FAIL;
     }
 
