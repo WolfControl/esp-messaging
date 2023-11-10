@@ -373,9 +373,6 @@ esp_err_t sendMessageSerial(cJSON* body)
     static const char* TAG = "sendMessageSerial";
     char* bodySerialized;
 
-    // This is causing panic as bodySerialized isn't valid once picked up by sendSerialTask
-    // How to allocate memory for this?
-
     ESP_LOGD(TAG, "Serializing JSON...");
     bodySerialized = cJSON_PrintUnformatted(body);
     if (bodySerialized == NULL) {
