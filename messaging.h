@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "string.h"
+#include "math.h"
 
 #ifdef __cplusplus
 extern "C" {
