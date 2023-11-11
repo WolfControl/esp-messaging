@@ -19,9 +19,20 @@ void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
     static const char *TAG = "OnESPNowRecv";
+    const char* errorPtr;
 
     ESP_LOGI(TAG, "Received %d byes from %02x:%02x:%02x:%02x:%02x:%02x", len, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
+    ESP_LOGW(TAG, "Testing parse json before sending to queue...");
+    cJSON* incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
+    ESP_LOGW(TAG, "Test JSON: %s", cJSON_Print(incomingJSON));
+
+    if (incomingJSON == NULL) {
+        ESP_LOGE(TAG, "Failed to parse incoming JSON: Error at %s", errorPtr);
+        return;
+    }
+
+    // Issue is here: Can parse the JSON just fine in this task but its wonky after being picked up via the queue
     if (xQueueSend(incomingESPNowQueue, &incomingData, 0) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send packet to incomingESPNowQueue queue");
     }
@@ -286,16 +297,17 @@ void receiveESPNowTask (void* pvParameters)
     static const char *TAG = "receiveESPNowTask";
     messageHandler handler = (messageHandler)pvParameters;
     uint8_t* incomingData;
-    cJSON* incomingJSON;
     const char* errorPtr;
 
     while (1) {
         ESP_LOGD(TAG, "Waiting for incoming data...");
         if (xQueueReceive(incomingESPNowQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingData);
+            // Something is wrong with the queue - messages changing size, memory management, etc.
+            // What ever could it be :(
 
             ESP_LOGD(TAG, "Parsing JSON...");
-            incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
+            cJSON* incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
 
             if (incomingJSON == NULL) {
                 ESP_LOGE(TAG, "Failed to parse incoming JSON: Error at %s", errorPtr);
