@@ -466,11 +466,18 @@ esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC
     static const char* TAG = "sendReadings";
     esp_err_t res;
     cJSON* body = createMessageBody();
+     char strReading[20];
 
     ESP_LOGI(TAG, "Adding readings to body...");
     cJSON* readingsArray = cJSON_CreateArray();
     for (int i = 0; i < numReadings; i++) {
-        cJSON_AddItemToArray(readingsArray, cJSON_CreateNumber(readings[i]));
+        if (isnan(readings[i])) {
+            cJSON_AddItemToArray(readingsArray, cJSON_CreateNull());
+        } else {
+            snprintf(strReading, sizeof(strReading), "%.2f", readings[i]);
+            cJSON_AddItemToArray(readingsArray, cJSON_CreateString(strReading));
+            memset(strReading, 0, sizeof(strReading));
+        }
     }
 
     cJSON_AddItemToObject(body, "r", readingsArray);
