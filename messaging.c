@@ -22,7 +22,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 
     ESP_LOGI(TAG, "Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x", len, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
-    ESP_LOGI(TAG, "Allocating memory for incoming data...");
+    ESP_LOGD(TAG, "Allocating memory for incoming data...");
     // use calloc to zero out memory
     uint8_t* incomingDataCopy = (uint8_t*)calloc(len, sizeof(uint8_t));
     if (incomingDataCopy == NULL) {
@@ -30,7 +30,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
         return;
     }
 
-    ESP_LOGI(TAG, "Copying incoming data to allocated memory...");
+    ESP_LOGD(TAG, "Copying incoming data to allocated memory...");
     memcpy(incomingDataCopy, incomingData, len);
 
     ESP_LOGD(TAG, "Posting pointer to incomingESPNowQueue...");
@@ -253,7 +253,7 @@ void sendESPNowTask(void *pvParameters)
             esp_err_t result = esp_now_send(outgoingMessage.destinationMAC, (uint8_t *) outgoingMessage.bodyserialized, len); 
 
             if (result == ESP_OK) {
-                ESP_LOGI(TAG, "Published packet to ESP-NOW: %s", outgoingMessage.bodyserialized);
+                ESP_LOGD(TAG, "Published packet to ESP-NOW: %s", outgoingMessage.bodyserialized);
             }
             else {
                 ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
@@ -352,9 +352,10 @@ void receiveSerialTask(void* pvParameters)
 void listenSerialDaemon(void* pvParameters)
 {
     static const char* TAG = "listenSerialDaemon";
+    
+    ESP_LOGD(TAG, "Waiting for incoming data...");        
 
     while (1) {
-        ESP_LOGD(TAG, "Waiting for incoming data...");        
         size_t len = 0;
         uart_get_buffered_data_len(UART_NUMBER, &len);
 
@@ -484,7 +485,7 @@ esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC
     cJSON* body = createMessageBody();
      char strReading[20];
 
-    ESP_LOGI(TAG, "Adding readings to body...");
+    ESP_LOGD(TAG, "Adding readings to body...");
     cJSON* readingsArray = cJSON_CreateArray();
     for (int i = 0; i < numReadings; i++) {
         if (isnan(readings[i])) {
