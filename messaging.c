@@ -19,24 +19,27 @@ void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 {
     static const char *TAG = "OnESPNowRecv";
-    const char* errorPtr;
 
-    ESP_LOGI(TAG, "Received %d byes from %02x:%02x:%02x:%02x:%02x:%02x", len, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    ESP_LOGI(TAG, "Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x", len, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
-    ESP_LOGW(TAG, "Testing parse json before sending to queue...");
-    cJSON* incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
-    ESP_LOGW(TAG, "Test JSON: %s", cJSON_Print(incomingJSON));
-
-    if (incomingJSON == NULL) {
-        ESP_LOGE(TAG, "Failed to parse incoming JSON: Error at %s", errorPtr);
+    ESP_LOGI(TAG, "Allocating memory for incoming data...");
+    // use calloc to zero out memory
+    uint8_t* incomingDataCopy = (uint8_t*)calloc(len, sizeof(uint8_t));
+    if (incomingDataCopy == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for data, dropping packet");
         return;
     }
 
-    // Issue is here: Can parse the JSON just fine in this task but its wonky after being picked up via the queue
-    if (xQueueSend(incomingESPNowQueue, &incomingData, 0) != pdTRUE) {
+    ESP_LOGI(TAG, "Copying incoming data to allocated memory...");
+    memcpy(incomingDataCopy, incomingData, len);
+
+    ESP_LOGD(TAG, "Posting pointer to incomingESPNowQueue...");
+    if (xQueueSend(incomingESPNowQueue, &incomingDataCopy, 0) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send packet to incomingESPNowQueue queue");
+        free(incomingDataCopy); // Cleanup allocated memory.
     }
 }
+
 
 /*---------- Setup Functions ----------*/
 
@@ -256,7 +259,7 @@ void sendESPNowTask(void *pvParameters)
                 ESP_LOGE(TAG, "Error: %s", esp_err_to_name(result));
             }
 
-            // Free the packet string
+            ESP_LOGD(TAG, "Freeing memory...");
             free(outgoingMessage.bodyserialized);    
         }
     }
@@ -287,6 +290,7 @@ void sendSerialTask(void *pvParameters)
             uart_write_bytes(UART_NUMBER, bodySerialized, len);
             //uart_write_bytes(UART_NUMBER, &newline, 1);
 
+            ESP_LOGD(TAG, "Freeing memory...");
             free(bodySerialized);    
         }
     }
@@ -303,8 +307,6 @@ void receiveESPNowTask (void* pvParameters)
         ESP_LOGD(TAG, "Waiting for incoming data...");
         if (xQueueReceive(incomingESPNowQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             ESP_LOGI(TAG, "Received message from incomingESPNowQueue: %s", incomingData);
-            // Something is wrong with the queue - messages changing size, memory management, etc.
-            // What ever could it be :(
 
             ESP_LOGD(TAG, "Parsing JSON...");
             cJSON* incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
@@ -314,11 +316,13 @@ void receiveESPNowTask (void* pvParameters)
                 continue;
             }
 
-            ESP_LOGD(TAG, "Passing data to handler...");
+            ESP_LOGI(TAG, "Passing data to abstract handler...");
             handler(incomingJSON);
+
+            ESP_LOGD(TAG, "Freeing memory...");
+            free(incomingData);
         }
     }
-
 }
 
 void receiveSerialTask(void* pvParameters)
@@ -336,8 +340,11 @@ void receiveSerialTask(void* pvParameters)
             ESP_LOGD(TAG, "Parsing JSON...");
             incomingJSON = cJSON_Parse(incomingData);
 
-            ESP_LOGD(TAG, "Passing data to handler...");
+            ESP_LOGD(TAG, "Passing data to abstract handler...");
             handler(incomingJSON);
+
+            ESP_LOGD(TAG, "Freeing memory...");
+            free(incomingData);
         }
     }
 }
@@ -353,7 +360,12 @@ void listenSerialDaemon(void* pvParameters)
 
         if (len > 0) {
             ESP_LOGD(TAG, "Reading %d bytes from UART...", len);
-            char incomingData[BUF_SIZE];
+            char* incomingData = (char*)calloc(BUF_SIZE, sizeof(char));
+            if (incomingData == NULL) {
+                ESP_LOGE(TAG, "Failed to allocate memory for incomingData");
+                continue;
+            }
+
             int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_RATE_MS); // leaving 1 byte for null terminator
             
             ESP_LOGD(TAG, "Null terminating string...");
@@ -364,17 +376,21 @@ void listenSerialDaemon(void* pvParameters)
                 ESP_LOGD(TAG, "Posting to incomingSerialQueue...");
                 if (xQueueSend(incomingSerialQueue, (void *) incomingData, 0) != pdTRUE) {
                     ESP_LOGE(TAG, "Failed to send packet to incomingSerial queue");
+                    free(incomingData);
                 }
 
             } else if (received_msg_length == BUF_SIZE - 1) {
                 ESP_LOGE(TAG, "Received message too long for buffer: %d bytes", received_msg_length);
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             } else if (received_msg_length == -1) {
                 ESP_LOGE(TAG, "Internal error in UART driver");
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             } else {
                 ESP_LOGE(TAG, "Received incomplete or malformed message");
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             }
         }
 
