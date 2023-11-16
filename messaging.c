@@ -341,16 +341,8 @@ void receiveSerialTask(void* pvParameters)
             ESP_LOGI(TAG, "Parsing JSON...");
             cJSON* incomingJSON = cJSON_ParseWithOpts((char*) incomingData, &errorPtr, 0);
 
-            if (incomingJSON == NULL) {
-                ESP_LOGE(TAG, "Failed to parse incoming JSON: Error at %s", errorPtr);
-                continue;
-            }
-
-            ESP_LOGI(TAG, "Passing data to abstract handler...");
+            ESP_LOGD(TAG, "Passing data to handler...");
             handler(incomingJSON);
-
-            ESP_LOGI(TAG, "Freeing memory...");
-            free(incomingData);
         }
     }
 }
@@ -358,17 +350,14 @@ void receiveSerialTask(void* pvParameters)
 void listenSerialDaemon(void* pvParameters)
 {
     static const char* TAG = "listenSerialDaemon";
-    
-    ESP_LOGI(TAG, "Waiting for incoming data...");        
 
     while (1) {
         size_t len = 0;
         uart_get_buffered_data_len(UART_NUMBER, &len);
 
         if (len > 0) {
-            ESP_LOGI(TAG, "Reading %d bytes from UART...", len);
+            ESP_LOGD(TAG, "Reading %d bytes from UART...", len);
             char incomingData[BUF_SIZE];
-
             int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_RATE_MS); // leaving 1 byte for null terminator
             
             ESP_LOGI(TAG, "Null terminating string...");
@@ -390,18 +379,20 @@ void listenSerialDaemon(void* pvParameters)
                 ESP_LOGI(TAG, "Posting to incomingSerialQueue...");
                 if (xQueueSend(incomingSerialQueue, &incomingDataCopy, 0) != pdTRUE) {
                     ESP_LOGE(TAG, "Failed to send packet to incomingSerial queue");
-                    free(incomingDataCopy);
                 }
 
             } else if (received_msg_length == BUF_SIZE - 1) {
                 ESP_LOGE(TAG, "Received message too long for buffer: %d bytes", received_msg_length);
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             } else if (received_msg_length == -1) {
                 ESP_LOGE(TAG, "Internal error in UART driver");
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             } else {
                 ESP_LOGE(TAG, "Received incomplete or malformed message");
                 uart_flush(UART_NUMBER);
+                free(incomingData);
             }
         }
 

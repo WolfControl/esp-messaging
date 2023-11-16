@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "string.h"
+#include "math.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,7 +24,7 @@ extern "C" {
 #define UART_NUMBER UART_NUM_2
 #define BUF_SIZE 256
 #define UART_QUEUE_SIZE 0
-#define TASK_STACK_SIZE 4096
+#define TASK_STACK_SIZE 8192
 #define TASK_PRIORITY 5
 #define BAUD_RATE 115200
 #define LISTENER_TASK_DELAY_MS 10
@@ -39,11 +40,6 @@ typedef struct {
     char* bodyserialized;
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
-
-// Used internally for outgoing UART messages
-typedef struct {
-    char* bodyserialized;
-} SerialMessage;
 
 const char* networkName;
 const char* zoneName;
