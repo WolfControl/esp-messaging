@@ -220,33 +220,6 @@ esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC
 */
 esp_err_t sendCommand(char* command, uint8_t* targetDeviceId);
 
-/*--------------------------------------*/
-
-/*
-RTD: 25.0 // deg C
-pH: 7.0 // logaritmic scale
-DO: 400 // mg/L
-EC: 1.2 // mS/cm
-
-JSON structures for messages
-
-Readings
-    id: 12345 // Device ID
-    t: 1234567890 // Unix timestamp of when reading was taken and sent from device
-    r: [25.0, 7.0, 400, 1.2] // readings
-
-Commands
-    id: 12345 // ID of device to receive command
-    t: 1234567890 // Unix timestamp of when the command was first sent from the MQTT gateway
-    c: "PH,cal,mid,7.0" // cmd to pass to EZO method for object "PH"
-
-Logs
-    id: 12345 // Device ID
-    t: 1234567890 // Unix timestamp of when log was sent from device
-    l: "Pump3 ERR" // log message
-
-*/
-
 #ifdef __cplusplus
 }
 #endif
