@@ -43,9 +43,8 @@ typedef struct {
 
 const char* networkName;
 const char* zoneName;
-const char* gatewayName;
-const char* deviceName;
-const char* nodeName;
+const char* gatewayID;
+const char* deviceID;
 
 esp_now_peer_info_t gatewayInfo;
 
