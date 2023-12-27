@@ -168,6 +168,8 @@ esp_err_t sendMessageSerial(cJSON* body);
  */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
+// Hello
+
 /*--------------------------------------*/
 /*---------- Helper Functions ----------*/
 /*--------------------------------------*/
