@@ -108,8 +108,6 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 /**
  * @brief RTOS Task that receives outgoing messages from outgoingESPNowQueue and sends them via ESP-NOW.
  * 
- * @note This is janky, refactor
- * @note Sends via ESP-NOW to MAC address injected into message body by sendMessageESPNow
  * @note Receives data as a char pointer (JSON is serialized in sendMessageESPNow)
 */
 void sendESPNowTask(void *pvParameters);
@@ -163,8 +161,6 @@ esp_err_t sendMessageSerial(cJSON* body);
  * @param destinationMAC MAC address to send to.
  * 
  * @return ESP_OK if successful, ESP_FAIL if not.
- * 
- * @note Is there a better way to do this? Previously used a message struct that had MAC and cJSON pointer but simplifying for now.
  */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
