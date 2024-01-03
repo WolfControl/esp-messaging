@@ -471,8 +471,6 @@ cJSON* createMessageBody()
 
 /*---------- User Functions ----------*/
 
-// TODO: Refactor these to take MAC address either as a param or move the gateway mac from main.h to messaging.h
-
 esp_err_t sendLog(char* logMessage, uint8_t* destinationMAC)
 {
     static const char* TAG = "sendLog";
