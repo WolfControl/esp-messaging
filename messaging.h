@@ -41,11 +41,6 @@ typedef struct {
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
-const char* networkName;
-const char* zoneName;
-const char* gatewayID;
-const char* deviceID;
-
 esp_now_peer_info_t broadcastInfo;
 const static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
