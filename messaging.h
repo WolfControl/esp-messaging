@@ -32,6 +32,7 @@ extern "C" {
 #define UART_READ_TIMEOUT_MS 100
 
 
+
 // Defining the user's message handler function to be used with setupESPNow and setupSerial
 // The messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
 typedef void (*messageHandler)(cJSON* incomingMessage);
@@ -43,7 +44,6 @@ typedef struct {
 } ESPNowMessage;
 
 esp_now_peer_info_t broadcastPeer;
-const static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 

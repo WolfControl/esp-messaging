@@ -97,6 +97,7 @@ esp_err_t setupESPNow (messageHandler handler)
     }
 
     ESP_LOGD(TAG, "Creating Broadcast Peer...");
+    uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
     memcpy(broadcastPeer.peer_addr, broadcastAddress, ESP_NOW_ETH_ALEN);
     broadcastPeer.channel = 0;
     broadcastPeer.encrypt = false;
