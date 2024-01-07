@@ -20,7 +20,6 @@
 extern "C" {
 #endif
 
-// move somewhere else, they're getting redifined by linker
 // macros for serial
 #define UART_NUMBER UART_NUM_2
 #define BUF_SIZE 256
@@ -44,11 +43,8 @@ typedef struct {
 } ESPNowMessage;
 
 esp_now_peer_info_t broadcastPeer;
-
 TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
-
-QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue;
-QueueHandle_t incomingSerialQueue, outgoingSerialQueue;
+QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue, incomingSerialQueue, outgoingSerialQueue;
 
 
 /*--------------------------------------*/
