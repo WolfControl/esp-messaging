@@ -2,16 +2,9 @@
 
 /*---------- ESPNow Interrupts: Posting to queues ----------*/
 
-void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status)
+void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status)
 {
-    static const char *TAG = "OnESPNowSendDevice";
-
-    ESP_LOGD(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
-}
-
-void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status)
-{
-    static const char *TAG = "OnESPNowSendGateway";
+    static const char *TAG = "OnESPNowSend";
 
     ESP_LOGD(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
 }
@@ -43,7 +36,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
 
 /*---------- Setup Functions ----------*/
 
-esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway)
+esp_err_t setupESPNow (messageHandler handler)
 {
     static const char *TAG = "setupESPNow";
     esp_err_t ret = ESP_OK;
@@ -55,10 +48,10 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ret;
     }
 
-    if(!isGateway) {
-        ESP_LOGD(TAG, "Initializing default station...");
-        esp_netif_create_default_wifi_sta();
-    }
+    // Do we need it at all?
+    // Testing: This was previously done only on non gateway devices
+    //ESP_LOGD(TAG, "Initializing default station...");
+    //esp_netif_create_default_wifi_sta();
 
     ESP_LOGD(TAG, "Initializing Wi-Fi...");
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
@@ -89,19 +82,6 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ret;
     }
 
-    // Is this needed?
-    //ESP_ERROR_CHECK( esp_wifi_set_channel(CONFIG_ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE));
-
-    // think about how mac needs set on devices for future
-    if(isGateway) {
-        ESP_LOGD(TAG, "Setting MAC address...");
-        ret = esp_wifi_set_mac(ESP_IF_WIFI_STA, gatewayAddress);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to set MAC address");
-            return ret;
-        }
-    }
-
     ESP_LOGD(TAG, "Initializing ESP-NOW...");
     ret = esp_now_init();
     if (ret != ESP_OK) {
@@ -110,28 +90,22 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
     }
     
     ESP_LOGD(TAG, "Registering send callback for ESP-NOW...");
-    if (isGateway) {
-        ret = esp_now_register_send_cb(OnESPNowSendGateway);
-    } else {
-        ret = esp_now_register_send_cb(OnESPNowSendDevice);
-    }
+    ret = esp_now_register_send_cb(OnESPNowSend);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to register send callback");
         return ret;
     }
 
-    // how will gateway handle peers?
-    if(!isGateway) {
-        ESP_LOGD(TAG, "Creating peer for gateway...");
-        memcpy(gatewayInfo.peer_addr, gatewayAddress, ESP_NOW_ETH_ALEN);
-        gatewayInfo.channel = 0;
-        gatewayInfo.encrypt = false;
+    ESP_LOGD(TAG, "Creating Broadcast Peer...");
+    memcpy(broadcastPeer.peer_addr, broadcastAddress, ESP_NOW_ETH_ALEN);
+    broadcastPeer.channel = 0;
+    broadcastPeer.encrypt = false;
 
-        ret = esp_now_add_peer(&gatewayInfo);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to add peer");
-            return ret;
-        }
+    ESP_LOGD(TAG, "Adding Broadcast Peer...");
+    ret = esp_now_add_peer(&broadcastPeer);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to add broadcast peer");
+        return ret;
     }
 
     ESP_LOGD(TAG, "Registering receive callback for ESP-NOW...");
@@ -141,7 +115,6 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ret;
     }
 
-    // setup message queues
     ESP_LOGD(TAG, "Creating incomingESPNowQueue...");
     incomingESPNowQueue = xQueueCreate(10, sizeof(cJSON*));
     if (incomingESPNowQueue == NULL) {
@@ -156,7 +129,6 @@ esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bo
         return ESP_FAIL;
     }
 
-    // setup tasks
     ESP_LOGD(TAG, "Starting receive task with abstract handler...");
     if (pdPASS != xTaskCreate(receiveESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &receiveESPNowTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create listener task");

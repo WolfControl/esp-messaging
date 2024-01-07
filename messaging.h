@@ -46,7 +46,8 @@ const char* zoneName;
 const char* gatewayID;
 const char* deviceID;
 
-esp_now_peer_info_t gatewayInfo;
+esp_now_peer_info_t broadcastInfo;
+const static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 
@@ -59,10 +60,7 @@ QueueHandle_t incomingSerialQueue, outgoingSerialQueue;
 /*--------------------------------------*/
 
 // Logs ESP-NOW send status
-void OnESPNowSendDevice(const uint8_t *mac_addr, esp_now_send_status_t status);
-
-// Logs ESP-NOW send status
-void OnESPNowSendGateway(const uint8_t *mac_addr, esp_now_send_status_t status);
+void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 // Interrupts, posts incoming messages to incomingESPNowQueue as uint8_t pointer
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
@@ -76,15 +74,11 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
  * 
  * @param handler User defined function to handle incoming messages. Expects a cJSON pointer.
  * 
- * @param gatewayAddress MAC address of the gateway device.
- * 
- * @param isGateway Boolean to indicate if this device is the gateway.
- * 
  * @return ESP_OK if successful, ESP_FAIL if not.
  * 
  * @note Sets up wifi stack, sets callbacks, creates queues and tasks.
 */
-esp_err_t setupESPNow (messageHandler handler, const uint8_t *gatewayAddress, bool isGateway);
+esp_err_t setupESPNow (messageHandler handler);
 
 /**
  * @brief Sets up components necessary for messaging via UART.
