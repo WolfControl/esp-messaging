@@ -42,7 +42,7 @@ typedef struct {
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
-esp_now_peer_info_t broadcastInfo;
+esp_now_peer_info_t broadcastPeer;
 const static uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
