@@ -435,7 +435,7 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 cJSON* createMessageBody()
 {
     cJSON* body = cJSON_CreateObject();
-    cJSON_AddStringToObject(body, "d", deviceName);
+    cJSON_AddStringToObject(body, "d", "testDeviceID");
     cJSON_AddNumberToObject(body, "t", esp_timer_get_time());
 
     return body;

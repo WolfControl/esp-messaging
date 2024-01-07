@@ -14,6 +14,7 @@
 #include "nvs_flash.h"
 #include "string.h"
 #include "math.h"
+#include "mqtt_client.h"
 
 #ifdef __cplusplus
 extern "C" {
