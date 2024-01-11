@@ -48,8 +48,7 @@ esp_err_t setupESPNow (messageHandler handler)
         return ret;
     }
 
-    // Do we need it at all?
-    // Testing: This was previously done only on non gateway devices
+    // Confirm if this can be removed
     //ESP_LOGD(TAG, "Initializing default station...");
     //esp_netif_create_default_wifi_sta();
 

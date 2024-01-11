@@ -140,11 +140,11 @@ void listenSerialDaemon(void* pvParameters);
 esp_err_t sendMessageSerial(cJSON* body);
 
 /**
- * @brief Serializes a cJSON object, creates ESPNowMessage struct with gatewayMAC, and posts it to outgoingESPNowQueue.
+ * @brief Serializes a cJSON object, wraps in ESPNowMessage struct, and posts it to outgoingESPNowQueue.
  * 
  * @param body A cJSON object.
  * 
- * @param destinationMAC MAC address to send to.
+ * @param destinationMAC The MAC address to send our message to.
  * 
  * @return ESP_OK if successful, ESP_FAIL if not.
  */
