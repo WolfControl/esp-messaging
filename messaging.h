@@ -31,12 +31,9 @@ extern "C" {
 #define UART_READ_TIMEOUT_MS 100
 
 
-
-// Defining the user's message handler function to be used with setupESPNow and setupSerial
-// The messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
+// messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
 typedef void (*messageHandler)(cJSON* incomingMessage);
 
-// Used internally for outgoing ESP-NOW messages
 typedef struct {
     char* bodyserialized;
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
@@ -46,10 +43,7 @@ esp_now_peer_info_t broadcastPeer;
 TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue, incomingSerialQueue, outgoingSerialQueue;
 
-
-/*--------------------------------------*/
-/*---------- Callbacks & ISRs ----------*/
-/*--------------------------------------*/
+/*-------------- Callbacks & ISRs --------------*/
 
 // Logs ESP-NOW send status
 void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
@@ -57,9 +51,7 @@ void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
 // Interrupts, posts incoming messages to incomingESPNowQueue as uint8_t pointer
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 
-/*--------------------------------------*/
-/*----------- Setup Functions ----------*/
-/*--------------------------------------*/
+/*-------------- Setup Functions --------------*/
 
 /**
  * @brief Sets up components necessary for messaging via ESP-NOW.
@@ -87,9 +79,7 @@ esp_err_t setupESPNow (messageHandler handler);
 */
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
-/*--------------------------------------*/
-/*------------- RTOS Tasks -------------*/
-/*--------------------------------------*/
+/*-------------- RTOS Tasks --------------*/
 
 /**
  * @brief RTOS Task that receives outgoing messages from outgoingESPNowQueue and sends them via ESP-NOW.
@@ -126,9 +116,7 @@ void receiveSerialTask(void* pvParameters);
 */
 void listenSerialDaemon(void* pvParameters);
 
-/*--------------------------------------*/
-/*-------- Messaging Functions ---------*/
-/*--------------------------------------*/
+/*-------------- Messaging Functions --------------*/
 
 /**
  * @brief Re-serializes a cJSON object and posts it to outgoingSerialQueue.
