@@ -29,6 +29,7 @@ See `messaging.h` for a full list of functions and their documentation.
 void myMessageHandler(cJSON* incomingMessage) {
     // Handle incoming message
     printf("Incoming message: %s\n", cJSON_Print(incomingMessage));
+    free(incomingMessage);
 }
 
 void app_main() {
