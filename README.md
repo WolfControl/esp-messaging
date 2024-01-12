@@ -6,7 +6,7 @@ ESP-messaging is a library for sending and receiving messages between ESP32/ESP8
 
 ## Features
 
-- Separate RTOS tasks for send/receive
+- Separate threads (RTOS tasks) for sending and receiving messages
 - Message queueing for inbound/outbound messages
 - Automatic configuration of ESP-NOW and UART
 - Automatic parsing of incoming messages
