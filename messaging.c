@@ -29,7 +29,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
     ESP_LOGD(TAG, "Posting pointer to incomingESPNowQueue...");
     if (xQueueSend(incomingESPNowQueue, &incomingDataCopy, 0) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send packet to incomingESPNowQueue queue");
-        free(incomingDataCopy); // Cleanup allocated memory.
+        free(incomingDataCopy);
     }
 }
 
@@ -430,72 +430,5 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
     return ESP_OK;
 }
 
-/*---------- Helper Functions ----------*/
-
-cJSON* createMessageBody()
-{
-    cJSON* body = cJSON_CreateObject();
-    cJSON_AddStringToObject(body, "d", "testDeviceID");
-    cJSON_AddNumberToObject(body, "t", esp_timer_get_time());
-
-    return body;
-}
-
-/*---------- User Functions ----------*/
-
-esp_err_t sendLog(char* logMessage, uint8_t* destinationMAC)
-{
-    static const char* TAG = "sendLog";
-    esp_err_t res;
-    cJSON* body = createMessageBody();
-
-    ESP_LOGD(TAG, "Adding log message to body...");
-    cJSON_AddStringToObject(body, "l", logMessage);
-
-    // if on ESPNow gateway, return sendMessageSerial?
-    res = sendMessageESPNow(body, destinationMAC);
-    return res;
-
-}
-
-esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC)
-{
-    static const char* TAG = "sendReadings";
-    esp_err_t res;
-    cJSON* body = createMessageBody();
-     char strReading[20];
-
-    ESP_LOGD(TAG, "Adding readings to body...");
-    cJSON* readingsArray = cJSON_CreateArray();
-    for (int i = 0; i < numReadings; i++) {
-        if (isnan(readings[i])) {
-            cJSON_AddItemToArray(readingsArray, cJSON_CreateNull());
-        } else {
-            snprintf(strReading, sizeof(strReading), "%.2f", readings[i]);
-            cJSON_AddItemToArray(readingsArray, cJSON_CreateString(strReading));
-            memset(strReading, 0, sizeof(strReading));
-        }
-    }
-
-    cJSON_AddItemToObject(body, "r", readingsArray);
-
-    res = sendMessageESPNow(body, destinationMAC);
-    return res;
-
-}
-
-esp_err_t sendCommand(char* command, uint8_t* targetDeviceId)
-{
-    static const char* TAG = "sendCommand";
-    esp_err_t res;
-    cJSON* body = createMessageBody();
-
-    ESP_LOGD(TAG, "Adding command to body...");
-    cJSON_AddStringToObject(body, "c", command);
-
-    res = sendMessageSerial(body);
-    return res;
-    
-}
 
 // EoF

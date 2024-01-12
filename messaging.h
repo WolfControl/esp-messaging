@@ -150,59 +150,6 @@ esp_err_t sendMessageSerial(cJSON* body);
  */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
-// Hello
-
-/*--------------------------------------*/
-/*---------- Helper Functions ----------*/
-/*--------------------------------------*/
-
-/**
- * @brief Helper function for sendLog, sendReadings, and sendCommand
- * 
- * @return cJSON object body with deviceid and timestamp
-*/
-cJSON* createMessageBody();
-
-/*--------------------------------------*/
-/*----------- User Functions -----------*/
-/*--------------------------------------*/
-
-/**
- * @brief Sends a log message to the gateway via ESP-NOW.
- *
- * @param log String to send to gateway
- * 
- * @param destinationMAC MAC address to send to
- * 
- * @return ESP_OK if successful, error code as esp_err_t if not.
- *
- * @note adds deviceID and timestamp to JSON body
-*/
-esp_err_t sendLog(char* log, uint8_t* destinationMAC);
-
-/**
- * @brief Sends an array of sensor readings to the gateway via ESP-NOW.
- * 
- * @param readings Array of sensor readings
- * 
- * @param numReadings Number of readings in array
- * 
- * @param destinationMAC MAC address to send to
- * 
- * @return ESP_OK if successful, error code as esp_err_t if not.
- * 
- * @note adds deviceID and timestamp to JSON body
- * 
-*/
-esp_err_t sendReadings(float* readings, int numReadings, uint8_t* destinationMAC);
-
-/**
- * Called on MQTT gateway
- * Takes a target deviceId, node, and command, compiles a cJSON object with id, timestamp, and command
- * Sends serialized JSON to the ESP-NOW gateway via UART
-*/
-esp_err_t sendCommand(char* command, uint8_t* targetDeviceId);
-
 #ifdef __cplusplus
 }
 #endif
