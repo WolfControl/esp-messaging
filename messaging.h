@@ -135,6 +135,8 @@ esp_err_t sendMessageSerial(cJSON* body);
  * @param destinationMAC The MAC address to send our message to.
  * 
  * @return ESP_OK if successful, ESP_FAIL if not.
+ * 
+ * @note Frees the cJSON object after sending.
  */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
