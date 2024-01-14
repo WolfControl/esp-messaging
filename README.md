@@ -43,8 +43,13 @@ void app_main() {
     cJSON* message = cJSON_CreateObject();
     cJSON_AddStringToObject(message, "message", "Hello World!");
 
+
+    uint8_t* broadcastAddress = calloc(6, sizeof(uint8_t));
+    memcpy(broadcastAddress, "\xFF\xFF\xFF\xFF\xFF\xFF", 6);
+       
     // Send message to all devices
-    sendMessageESPNow(message, "ff:ff:ff:ff:ff:ff");
+    sendMessageESPNow(message, broadcastAddress);
+    free (broadcastAddress);
 }
 ```
 
