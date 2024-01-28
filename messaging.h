@@ -127,17 +127,27 @@ void listenSerialDaemon(void* pvParameters);
  */
 esp_err_t sendMessageSerial(cJSON* body);
 
+
 /**
- * @brief Serializes a cJSON object, wraps in ESPNowMessage struct, and posts it to outgoingESPNowQueue.
- * 
- * @param body A cJSON object.
- * 
- * @param destinationMAC The MAC address to send our message to.
- * 
- * @return ESP_OK if successful, ESP_FAIL if not.
- * 
- * @note Frees the cJSON object after sending.
- */
+     * @brief Sends a message over ESP-NOW protocol.
+     *
+     * This function takes a cJSON object representing the message body and the destination MAC address as inputs.
+     *
+     * @param body A cJSON object representing the message body.
+     * @param destinationMAC The MAC address of the destination device.
+     * @return - ESP_OK if the message was successfully sent.
+     *         - ESP_FAIL if there was an error sending the message.
+     *
+     * @note The `body` cJSON object will be deleted after sending the message.
+     *
+     * @example
+     * ```c
+     * cJSON* messageBody = cJSON_CreateObject();
+     * cJSON_AddStringToObject(messageBody, "key", "value");
+     * const uint8_t destinationMAC[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+     * esp_err_t result = sendMessageESPNow(messageBody, destinationMAC);
+     * ```
+*/
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
 #ifdef __cplusplus
