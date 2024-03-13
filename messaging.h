@@ -31,12 +31,9 @@ extern "C" {
 #define UART_READ_TIMEOUT_MS 100
 
 
-
-// Defining the user's message handler function to be used with setupESPNow and setupSerial
-// The messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
+// messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
 typedef void (*messageHandler)(cJSON* incomingMessage);
 
-// Used internally for outgoing ESP-NOW messages
 typedef struct {
     char* bodyserialized;
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
@@ -49,9 +46,7 @@ extern QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue, incomingSerialQue
 extern const int txPin;
 extern const int rxPin;
 
-/*--------------------------------------*/
-/*---------- Callbacks & ISRs ----------*/
-/*--------------------------------------*/
+/*-------------- Callbacks & ISRs --------------*/
 
 // Logs ESP-NOW send status
 void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
@@ -59,9 +54,7 @@ void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
 // Interrupts, posts incoming messages to incomingESPNowQueue as uint8_t pointer
 void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
 
-/*--------------------------------------*/
-/*----------- Setup Functions ----------*/
-/*--------------------------------------*/
+/*-------------- Setup Functions --------------*/
 
 /**
  * @brief Sets up components necessary for messaging via ESP-NOW.
@@ -89,9 +82,7 @@ esp_err_t setupESPNow (messageHandler handler);
 */
 esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
 
-/*--------------------------------------*/
-/*------------- RTOS Tasks -------------*/
-/*--------------------------------------*/
+/*-------------- RTOS Tasks --------------*/
 
 /**
  * @brief RTOS Task that receives outgoing messages from outgoingESPNowQueue and sends them via ESP-NOW.
@@ -128,9 +119,7 @@ void receiveSerialTask(void* pvParameters);
 */
 void listenSerialDaemon(void* pvParameters);
 
-/*--------------------------------------*/
-/*-------- Messaging Functions ---------*/
-/*--------------------------------------*/
+/*-------------- Messaging Functions --------------*/
 
 /**
  * @brief Re-serializes a cJSON object and posts it to outgoingSerialQueue.
@@ -141,15 +130,27 @@ void listenSerialDaemon(void* pvParameters);
  */
 esp_err_t sendMessageSerial(cJSON* body);
 
+
 /**
- * @brief Serializes a cJSON object, wraps in ESPNowMessage struct, and posts it to outgoingESPNowQueue.
- * 
- * @param body A cJSON object.
- * 
- * @param destinationMAC The MAC address to send our message to.
- * 
- * @return ESP_OK if successful, ESP_FAIL if not.
- */
+     * @brief Sends a message over ESP-NOW protocol.
+     *
+     * This function takes a cJSON object representing the message body and the destination MAC address as inputs.
+     *
+     * @param body A cJSON object representing the message body.
+     * @param destinationMAC The MAC address of the destination device.
+     * @return - ESP_OK if the message was successfully sent.
+     *         - ESP_FAIL if there was an error sending the message.
+     *
+     * @note The `body` cJSON object will be deleted after sending the message.
+     *
+     * @example
+     * ```c
+     * cJSON* messageBody = cJSON_CreateObject();
+     * cJSON_AddStringToObject(messageBody, "key", "value");
+     * const uint8_t destinationMAC[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+     * esp_err_t result = sendMessageESPNow(messageBody, destinationMAC);
+     * ```
+*/
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
 #ifdef __cplusplus
