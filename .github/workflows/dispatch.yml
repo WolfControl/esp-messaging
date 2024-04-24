@@ -1,0 +1,23 @@
+name: Dispatch Firmware Releases
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        repo: ['WolfControl/gateway-mqtt', 'WolfControl/gateway-espnow', 'WolfControl/client-watersensor']
+    steps:
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.JRHEMMEN_TOKEN }}
+          repository: ${{ matrix.repo }}
+          event-type: 'library-release'
+          client-payload: '{
+            "version": "${{ github.event.release.tag_name }}",
+            "library": "${{ github.event.repository.name }}"
+            }'
