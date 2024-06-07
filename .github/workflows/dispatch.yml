@@ -16,7 +16,7 @@ jobs:
         with:
           token: ${{ secrets.CICD_KEY }}
           repository: ${{ matrix.repo }}
-          event-type: 'library-release'
+          event-type: 'esp-library-release'
           client-payload: '{
             "version": "${{ github.event.release.tag_name }}",
             "library": "${{ github.event.repository.name }}"
