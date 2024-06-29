@@ -341,7 +341,7 @@ void listenSerialDaemon(void* pvParameters)
             ESP_LOGI(TAG, "Reading %d bytes from UART...", len);
             char incomingData[BUF_SIZE];
 
-            int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_RATE_MS); // leaving 1 byte for null terminator
+            int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS); // leaving 1 byte for null terminator
             
             ESP_LOGD(TAG, "Null terminating string...");
             incomingData[received_msg_length] = '\0';
