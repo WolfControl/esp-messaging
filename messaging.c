@@ -305,6 +305,7 @@ void receiveSerialTask(void* pvParameters)
 
     ESP_LOGD(TAG, "Waiting for incoming data...");
 
+// test
     while (1) {
         if (xQueueReceive(incomingSerialQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             ESP_LOGD(TAG, "Received data from incomingSerialQueue: %s", incomingData);
