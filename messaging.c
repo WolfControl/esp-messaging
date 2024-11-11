@@ -241,7 +241,6 @@ void sendSerialTask(void *pvParameters)
 {
     static const char *TAG = "sendSerialTask";
     char* bodySerialized;
-    //static const char newline = '\0';
 
     while(1) {
         ESP_LOGD(TAG, "Waiting for outgoing message...");
@@ -306,6 +305,7 @@ void receiveSerialTask(void* pvParameters)
 
     ESP_LOGD(TAG, "Waiting for incoming data...");
 
+// test
     while (1) {
         if (xQueueReceive(incomingSerialQueue, &incomingData, portMAX_DELAY) == pdTRUE) {
             ESP_LOGD(TAG, "Received data from incomingSerialQueue: %s", incomingData);
@@ -330,8 +330,8 @@ void receiveSerialTask(void* pvParameters)
 void listenSerialDaemon(void* pvParameters)
 {
     static const char* TAG = "listenSerialDaemon";
-    
-    ESP_LOGI(TAG, "Waiting for incoming data...");        
+
+    ESP_LOGI(TAG, "Waiting for incoming data...");
 
     while (1) {
         size_t len = 0;
@@ -339,33 +339,32 @@ void listenSerialDaemon(void* pvParameters)
 
         if (len > 0) {
             ESP_LOGI(TAG, "Reading %d bytes from UART...", len);
-            char incomingData[BUF_SIZE];
+            uint8_t incomingData[BUF_SIZE];
 
-            int received_msg_length = uart_read_bytes(UART_NUMBER, (uint8_t*)incomingData, BUF_SIZE - 1, UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS); // leaving 1 byte for null terminator
+            // Read bytes into incomingData without reserving space for null terminator
+            int received_msg_length = uart_read_bytes(UART_NUMBER, incomingData, BUF_SIZE, UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
             
-            ESP_LOGD(TAG, "Null terminating string...");
-            incomingData[received_msg_length] = '\0';
-
-            if (received_msg_length > 0 && incomingData[received_msg_length - 1] == '\0') {
-
-                ESP_LOGD(TAG, "Allocating memory for incoming data...");
-                char* incomingDataCopy = (char*)calloc(received_msg_length + 1, sizeof(char));
+            if (received_msg_length > 0) {
+                // Allocate memory to copy received binary data
+                uint8_t* incomingDataCopy = (uint8_t*)malloc(received_msg_length * sizeof(uint8_t));
                 if (incomingDataCopy == NULL) {
                     ESP_LOGE(TAG, "Failed to allocate memory for data, dropping packet");
                     uart_flush(UART_NUMBER);
                     continue;
                 }
 
-                ESP_LOGD(TAG, "Copying incoming data to allocated memory...");
-                memcpy(incomingDataCopy, incomingData, received_msg_length + 1);
+                // Copy the received binary data to dynamically allocated memory
+                memcpy(incomingDataCopy, incomingData, received_msg_length);
 
-                ESP_LOGD(TAG, "Posting to incomingSerialQueue...");
+                ESP_LOGI(TAG, "Received %d bytes of binary data.", received_msg_length);
+
+                // Send the binary data to the queue
                 if (xQueueSend(incomingSerialQueue, &incomingDataCopy, 0) != pdTRUE) {
                     ESP_LOGE(TAG, "Failed to send packet to incomingSerial queue");
                     free(incomingDataCopy);
                 }
 
-            } else if (received_msg_length == BUF_SIZE - 1) {
+            } else if (received_msg_length == BUF_SIZE) {
                 ESP_LOGE(TAG, "Received message too long for buffer: %d bytes", received_msg_length);
                 uart_flush(UART_NUMBER);
             } else if (received_msg_length == -1) {
