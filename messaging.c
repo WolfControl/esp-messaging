@@ -356,8 +356,6 @@ void listenSerialDaemon(void* pvParameters)
                 // Copy the received binary data to dynamically allocated memory
                 memcpy(incomingDataCopy, incomingData, received_msg_length);
 
-                ESP_LOGI(TAG, "Received %d bytes of binary data.", received_msg_length);
-
                 // Send the binary data to the queue
                 if (xQueueSend(incomingSerialQueue, &incomingDataCopy, 0) != pdTRUE) {
                     ESP_LOGE(TAG, "Failed to send packet to incomingSerial queue");
