@@ -52,7 +52,7 @@ extern const int rxPin;
 void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status);
 
 // Interrupts, posts incoming messages to incomingESPNowQueue as uint8_t pointer
-void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len);
+void OnESPNowRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len);
 
 /*-------------- Setup Functions --------------*/
 

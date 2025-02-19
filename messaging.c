@@ -9,14 +9,16 @@ void OnESPNowSend(const uint8_t *mac_addr, esp_now_send_status_t status)
     ESP_LOGD(TAG, "Last Packet Send Status: %d", status == ESP_NOW_SEND_SUCCESS);
 }
 
-void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
+void OnESPNowRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingData, int len) 
 {
     static const char *TAG = "OnESPNowRecv";
 
-    ESP_LOGI(TAG, "Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x", len, mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+    const uint8_t *mac_addr = recv_info->src_addr;  // Extract MAC address from the struct
+
+    ESP_LOGI(TAG, "Received %d bytes from %02x:%02x:%02x:%02x:%02x:%02x", len, 
+             mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
 
     ESP_LOGD(TAG, "Allocating memory for incoming data...");
-    // use calloc to zero out memory
     uint8_t* incomingDataCopy = (uint8_t*)calloc(len, sizeof(uint8_t));
     if (incomingDataCopy == NULL) {
         ESP_LOGE(TAG, "Failed to allocate memory for data, dropping packet");
@@ -32,6 +34,7 @@ void OnESPNowRecv(const uint8_t *mac_addr, const uint8_t *incomingData, int len)
         free(incomingDataCopy);
     }
 }
+
 
 
 /*---------- Setup Functions ----------*/
