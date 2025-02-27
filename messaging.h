@@ -39,6 +39,12 @@ typedef struct {
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
+typedef struct {
+    uint8_t type;       // 0x01 = JSON, 0x02 = Binary
+    uint32_t length;    // Length of the message payload
+    uint8_t payload[];  // Flexible array member for message data
+} SerialMessage;
+
 extern esp_now_peer_info_t broadcastPeer;
 extern TaskHandle_t receiveSerialTaskHandle, receiveESPNowTaskHandle, sendESPNowTaskHandle, sendSerialTaskHandle, serialDaemonTaskHandle;
 extern QueueHandle_t incomingESPNowQueue, outgoingESPNowQueue, incomingSerialQueue, outgoingSerialQueue;
