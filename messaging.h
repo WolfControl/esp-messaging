@@ -159,6 +159,9 @@ esp_err_t sendMessageSerial(cJSON* body);
 */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
+
+void sendBinaryOverSerial(const uint8_t *chunkData, uint32_t chunkSize);
+
 #ifdef __cplusplus
 }
 #endif
