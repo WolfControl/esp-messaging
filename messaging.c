@@ -583,53 +583,31 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 
 void sendBinaryOverSerial(const uint8_t *chunkData, uint32_t chunkSize) {
     static const char* TAG = "sendBinaryOverSerial";
-    if (chunkSize == 0) return;  // No data to send
+    if (chunkData == NULL || chunkSize == 0) return;  // No data to send
 
-    // Allocate memory for the complete message
+    // Allocate memory for the SerialMessage struct
     SerialMessage* msg = (SerialMessage*) malloc(sizeof(SerialMessage) + chunkSize);
-    if (!msg) {
-        ESP_LOGE(TAG, "Memory allocation failed");
+    if (msg == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for SerialMessage");
         return;
     }
 
-    // Populate the message
+    // Populate the struct
     msg->type = 0x02;  // Binary type
     msg->length = chunkSize;
     memcpy(msg->payload, chunkData, chunkSize);
 
-    // Send header first (atomically)
-    uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(SerialMessage));
+    ESP_LOGD(TAG, "Posting binary data to outgoingSerialQueue...");
     
-    // Wait a small amount of time for the header to be processed
-    vTaskDelay(pdMS_TO_TICKS(10));
-    
-    // Then send payload in smaller chunks
-    const size_t MAX_CHUNK = 256;
-    size_t sent = 0;
-    
-    while (sent < chunkSize) {
-        size_t to_send = (chunkSize - sent > MAX_CHUNK) ? MAX_CHUNK : (chunkSize - sent);
-        int bytes_sent = uart_write_bytes(UART_NUMBER, (const char*)&msg->payload[sent], to_send);
-        
-        if (bytes_sent < 0) {
-            ESP_LOGE(TAG, "UART write error");
-            free(msg);
-            return;
-        }
-        
-        sent += bytes_sent;
-        
-        // Allow some time between chunks
-        vTaskDelay(pdMS_TO_TICKS(10));
+    // Try to send with a timeout to prevent blocking if queue is full
+    if (xQueueSend(outgoingSerialQueue, &msg, pdMS_TO_TICKS(100)) != pdTRUE) {
+        ESP_LOGE(TAG, "Failed to send message to outgoingSerialQueue");
+        free(msg);
+        return;
     }
     
-    // Final delay before the next message
-    vTaskDelay(pdMS_TO_TICKS(20));
-    
-    free(msg);
-    ESP_LOGI(TAG, "Binary data sent: %lu bytes", chunkSize);
+    ESP_LOGI(TAG, "Binary data queued: %lu bytes", chunkSize);
 }
-
 
 
 // EoF
