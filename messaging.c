@@ -364,150 +364,148 @@ void listenSerialDaemon(void* pvParameters) {
     static const char* TAG = "listenSerialDaemon";
     ESP_LOGI(TAG, "Listening for incoming serial data...");
     
-    // Buffer for header
-    uint8_t header_buffer[5];  // type (1 byte) + length (4 bytes)
+    // Buffer for header only
+    uint8_t headerBuffer[sizeof(SerialMessage)];  // Just the fixed part of SerialMessage
     
-    // Main state machine states
-    enum {
-        STATE_READING_HEADER,
-        STATE_READING_PAYLOAD
-    } state = STATE_READING_HEADER;
+    // Main states
+    enum ReadState {
+        WAITING_FOR_HEADER,
+        READING_PAYLOAD
+    } state = WAITING_FOR_HEADER;
     
-    SerialMessage* current_msg = NULL;
-    uint32_t bytes_read = 0;
-    uint32_t payload_length = 0;
+    // Message tracking variables
+    SerialMessage* currentMsg = NULL;
+    uint32_t bytesRead = 0;
+    uint32_t payloadLength = 0;
+    uint8_t msgType = 0;
     
-    // Flush any data in the buffer on startup
-    uart_flush(UART_NUMBER);
+    // Initialize
+    uart_flush_input(UART_NUMBER);
     vTaskDelay(pdMS_TO_TICKS(100));
     
     while (1) {
-        if (state == STATE_READING_HEADER) {
-            // Try to read a complete header (5 bytes)
-            size_t available;
-            uart_get_buffered_data_len(UART_NUMBER, &available);
-            
-            if (available >= 5) {
-                int read_bytes = uart_read_bytes(UART_NUMBER, header_buffer, 5, 
-                                              UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
-                
-                if (read_bytes == 5) {
-                    uint8_t msg_type = header_buffer[0];
-                    payload_length = header_buffer[1] | 
-                                   (header_buffer[2] << 8) | 
-                                   (header_buffer[3] << 16) | 
-                                   (header_buffer[4] << 24);
+        size_t available;
+        uart_get_buffered_data_len(UART_NUMBER, &available);
+        
+        if (available > 0) {
+            if (state == WAITING_FOR_HEADER) {
+                // Read complete header
+                if (available >= sizeof(SerialMessage)) {
+                    int readHeader = uart_read_bytes(UART_NUMBER, headerBuffer, 
+                                                  sizeof(SerialMessage), 
+                                                  UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
                     
-                    ESP_LOGI(TAG, "Received Header - Type: %u, Length: %lu", msg_type, payload_length);
-                    
-                    // Validate message type and length
-                    if ((msg_type != 0x01 && msg_type != 0x02) || 
-                        payload_length == 0 || 
-                        payload_length > BUF_SIZE) {
+                    if (readHeader == sizeof(SerialMessage)) {
+                        // Extract header fields
+                        msgType = headerBuffer[0];
+                        payloadLength = *((uint32_t*)&headerBuffer[1]);
                         
-                        ESP_LOGE(TAG, "Invalid message header (type=%u, length=%lu), discarding byte", 
-                                 msg_type, payload_length);
+                        ESP_LOGI(TAG, "Received Header - Type: %u, Length: %lu", msgType, payloadLength);
                         
-                        // Shift the buffer by one byte and try to resync
-                        memmove(header_buffer, header_buffer + 1, 4);
-                        uart_read_bytes(UART_NUMBER, &header_buffer[4], 1, 
-                                      UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
-                        continue;
+                        // Simple sanity checks
+                        if ((msgType != 0x01 && msgType != 0x02) || 
+                            payloadLength > BUF_SIZE) {
+                            
+                            ESP_LOGE(TAG, "Invalid header (type=%u, length=%lu), resetting", 
+                                     msgType, payloadLength);
+                            uart_flush_input(UART_NUMBER);
+                            continue;
+                        }
+                        
+                        // Allocate message with extra byte for JSON null terminator if needed
+                        size_t allocSize = sizeof(SerialMessage) + payloadLength + 
+                                         (msgType == 0x01 ? 1 : 0);
+                        
+                        currentMsg = (SerialMessage*) malloc(allocSize);
+                        if (!currentMsg) {
+                            ESP_LOGE(TAG, "Memory allocation failed");
+                            uart_flush_input(UART_NUMBER);
+                            continue;
+                        }
+                        
+                        // Copy header information
+                        currentMsg->type = msgType;
+                        currentMsg->length = payloadLength;
+                        bytesRead = 0;
+                        
+                        state = READING_PAYLOAD;
+                    } else {
+                        ESP_LOGE(TAG, "Failed to read complete header, read %d bytes", readHeader);
+                        uart_flush_input(UART_NUMBER);
                     }
-                    
-                    // Allocate memory for message
-                    size_t alloc_size = sizeof(SerialMessage) + payload_length;
-                    if (msg_type == 0x01) {
-                        alloc_size += 1; // Add space for null terminator for JSON
-                    }
-                    
-                    current_msg = (SerialMessage*) malloc(alloc_size);
-                    if (!current_msg) {
-                        ESP_LOGE(TAG, "Memory allocation failed");
-                        continue;
-                    }
-                    
-                    // Initialize message
-                    current_msg->type = msg_type;
-                    current_msg->length = payload_length;
-                    bytes_read = 0;
-                    
-                    // Transition to payload reading
-                    state = STATE_READING_PAYLOAD;
-                } else {
-                    ESP_LOGE(TAG, "Failed to read complete header, got %d bytes", read_bytes);
                 }
             }
-        } 
-        else if (state == STATE_READING_PAYLOAD) {
-            size_t available;
-            uart_get_buffered_data_len(UART_NUMBER, &available);
-            
-            if (available > 0) {
-                uint32_t bytes_to_read = (available < (payload_length - bytes_read)) ? 
-                                        available : (payload_length - bytes_read);
+            else if (state == READING_PAYLOAD) {
+                // Read payload in smaller chunks (more robust)
+                uint32_t readSize = (available < 256) ? available : 256;
                 
-                int read_bytes = uart_read_bytes(UART_NUMBER, 
-                                              &current_msg->payload[bytes_read], 
-                                              bytes_to_read,
-                                              UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
-                
-                if (read_bytes > 0) {
-                    bytes_read += read_bytes;
-                    ESP_LOGD(TAG, "Read %d payload bytes, total %lu/%lu", 
-                            read_bytes, bytes_read, payload_length);
+                // Don't read more than needed
+                if (readSize > (payloadLength - bytesRead)) {
+                    readSize = payloadLength - bytesRead;
                 }
                 
-                // Check if payload is complete
-                if (bytes_read >= payload_length) {
-                    // For JSON messages, ensure null termination
-                    if (current_msg->type == 0x01) {
-                        current_msg->payload[payload_length] = '\0';
+                if (readSize > 0) {
+                    int readBytes = uart_read_bytes(UART_NUMBER, 
+                                                 &currentMsg->payload[bytesRead], 
+                                                 readSize,
+                                                 UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
+                    
+                    if (readBytes > 0) {
+                        bytesRead += readBytes;
+                        ESP_LOGD(TAG, "Read %d payload bytes, total %lu/%lu", 
+                                readBytes, bytesRead, payloadLength);
                     }
                     
-                    ESP_LOGI(TAG, "Payload complete. Dispatching message to queue");
-                    
-                    // Send to processing queue
-                    SerialMessage* msg_to_send = current_msg;
-                    if (xQueueSend(incomingSerialQueue, &msg_to_send, pdMS_TO_TICKS(100)) != pdTRUE) {
-                        ESP_LOGE(TAG, "Failed to send message to queue");
-                        free(current_msg);
+                    // Check for completion
+                    if (bytesRead >= payloadLength) {
+                        // Add null terminator for JSON
+                        if (msgType == 0x01) {
+                            currentMsg->payload[payloadLength] = '\0';
+                        }
+                        
+                        ESP_LOGI(TAG, "Payload complete, dispatching message");
+                        
+                        // Send to queue for processing
+                        SerialMessage* msgToSend = currentMsg;
+                        if (xQueueSend(incomingSerialQueue, &msgToSend, pdMS_TO_TICKS(100)) != pdTRUE) {
+                            ESP_LOGE(TAG, "Failed to send to queue");
+                            free(currentMsg);
+                        }
+                        
+                        // Reset for next message
+                        currentMsg = NULL;
+                        bytesRead = 0;
+                        state = WAITING_FOR_HEADER;
                     }
-                    
-                    // Reset for next message
-                    current_msg = NULL;
-                    bytes_read = 0;
-                    state = STATE_READING_HEADER;
                 }
-            }
-            
-            // Check for stalled payload reads
-            static uint32_t last_bytes_read = 0;
-            static TickType_t last_activity_time = 0;
-            
-            if (last_bytes_read == bytes_read) {
-                if (last_activity_time == 0) {
-                    last_activity_time = xTaskGetTickCount();
-                } else if ((xTaskGetTickCount() - last_activity_time) > pdMS_TO_TICKS(5000)) {
-                    // No progress for 5 seconds, abandon this message
-                    ESP_LOGE(TAG, "Payload read stalled at %lu/%lu bytes, abandoning", 
-                             bytes_read, payload_length);
-                    free(current_msg);
-                    current_msg = NULL;
-                    bytes_read = 0;
-                    state = STATE_READING_HEADER;
-                    last_activity_time = 0;
-                    
-                    // Flush UART buffer to try to resync
-                    uart_flush_input(UART_NUMBER);
+                
+                // Handle stalled reads
+                static TickType_t lastProgress = 0;
+                static uint32_t lastBytesRead = 0;
+                
+                if (bytesRead == lastBytesRead) {
+                    if (lastProgress == 0) {
+                        lastProgress = xTaskGetTickCount();
+                    }
+                    else if ((xTaskGetTickCount() - lastProgress) > pdMS_TO_TICKS(3000)) {
+                        ESP_LOGE(TAG, "Read stalled at %lu/%lu bytes, abandoning", 
+                                bytesRead, payloadLength);
+                        free(currentMsg);
+                        currentMsg = NULL;
+                        bytesRead = 0;
+                        state = WAITING_FOR_HEADER;
+                        lastProgress = 0;
+                        uart_flush_input(UART_NUMBER);
+                    }
                 }
-            } else {
-                last_bytes_read = bytes_read;
-                last_activity_time = 0;
+                else {
+                    lastBytesRead = bytesRead;
+                    lastProgress = xTaskGetTickCount();
+                }
             }
         }
         
-        // Short delay to prevent CPU hogging
+        // Prevent CPU hogging
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
@@ -586,46 +584,49 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 void sendBinaryOverSerial(const uint8_t *chunkData, uint32_t chunkSize) {
     static const char* TAG = "sendBinaryOverSerial";
     if (chunkSize == 0) return;  // No data to send
+
+    // Allocate memory for the complete message
+    SerialMessage* msg = (SerialMessage*) malloc(sizeof(SerialMessage) + chunkSize);
+    if (!msg) {
+        ESP_LOGE(TAG, "Memory allocation failed");
+        return;
+    }
+
+    // Populate the message
+    msg->type = 0x02;  // Binary type
+    msg->length = chunkSize;
+    memcpy(msg->payload, chunkData, chunkSize);
+
+    // Send header first (atomically)
+    uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(SerialMessage));
     
-    // Create a header structure
-    struct __attribute__((packed)) {
-        uint8_t type;       // 0x02 for binary
-        uint32_t length;    // Payload length
-    } header = {
-        .type = 0x02,
-        .length = chunkSize
-    };
+    // Wait a small amount of time for the header to be processed
+    vTaskDelay(pdMS_TO_TICKS(10));
     
-    // First send the header - this is atomic to ensure it's sent as a unit
-    uart_write_bytes(UART_NUMBER, (const char *)&header, sizeof(header));
-    
-    // Small delay to ensure header and payload are separated
-    vTaskDelay(pdMS_TO_TICKS(5));
-    
-    // Send the payload in smaller chunks to prevent buffer overflow
+    // Then send payload in smaller chunks
     const size_t MAX_CHUNK = 256;
     size_t sent = 0;
     
     while (sent < chunkSize) {
         size_t to_send = (chunkSize - sent > MAX_CHUNK) ? MAX_CHUNK : (chunkSize - sent);
-        int bytes_sent = uart_write_bytes(UART_NUMBER, (const char *)(chunkData + sent), to_send);
+        int bytes_sent = uart_write_bytes(UART_NUMBER, (const char*)&msg->payload[sent], to_send);
         
         if (bytes_sent < 0) {
             ESP_LOGE(TAG, "UART write error");
+            free(msg);
             return;
         }
         
         sent += bytes_sent;
         
-        // Small delay to prevent buffer overflows
-        if (sent < chunkSize) {
-            vTaskDelay(pdMS_TO_TICKS(5));
-        }
+        // Allow some time between chunks
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
     
-    // Final delay to ensure this message is completely sent before the next one
-    vTaskDelay(pdMS_TO_TICKS(10));
+    // Final delay before the next message
+    vTaskDelay(pdMS_TO_TICKS(20));
     
+    free(msg);
     ESP_LOGI(TAG, "Binary data sent: %lu bytes", chunkSize);
 }
 
