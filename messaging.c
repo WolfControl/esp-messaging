@@ -264,7 +264,7 @@ void sendSerialTask(void *pvParameters) {
         if (xQueueReceive(outgoingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) {
             size_t totalSize = offsetof(SerialMessage, payload) + msg->length;
 
-            uint8_t *buffer = (uint8_t*) malloc(totalSize);  // Added '*' here
+            uint8_t *buffer = (uint8_t*) malloc(totalSize);
             if (!buffer) {
                 ESP_LOGE(TAG, "Failed to allocate buffer for sending");
                 free(msg);
@@ -330,7 +330,7 @@ void receiveSerialTask(void* pvParameters) {
 
     while (1) {
         if (xQueueReceive(incomingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) {
-            ESP_LOGW(TAG, "Received message. Type: %u, Length: %lu", msg->type, msg->length);
+            ESP_LOGI(TAG, "Received message. Type: %u, Length: %lu", msg->type, msg->length);
 
             if (msg->type == 0x01 && handlers->jsonHandler) {  // JSON Message
                 ESP_LOGD(TAG, "Parsing JSON...");

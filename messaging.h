@@ -105,7 +105,7 @@ void sendESPNowTask(void *pvParameters);
 /**
  * @brief RTOS Task that receives outgoing messages from outgoingSerialQueue and sends them via UART.
  * 
- * @note Receives data as char pointer (JSON is serialized in sendMessageSerial)
+ * @note Receives a pointer to a SerialMessage struct, buffers, serializes, and sends.
 */
 void sendSerialTask(void *pvParameters);
 
@@ -117,16 +117,16 @@ void sendSerialTask(void *pvParameters);
 void receiveESPNowTask (void* pvParameters);
 
 /**
- * @brief RTOS Task that receives data from incomingSerialQueue and passes to user defined handler.
+ * @brief RTOS Task that receives messages from incomingSerialQueue and passes to user defined handler, depending on message type.
+ * 
+ * @param pvParameters Struct containing 2 user defined functions: jsonHandler and binaryHandler.
  *
- * @note receives data as char pointer and parses to cJSON object
 */
 void receiveSerialTask(void* pvParameters);
 
 /**
- * @brief RTOS task that listens for incoming messages on UART and posts them to incomingSerialQueue.
+ * @brief RTOS task that listens for incoming SerialMessage(s) on UART and posts them to incomingSerialQueue.
  * 
- * @note Posts data as char pointer
 */
 void listenSerialDaemon(void* pvParameters);
 
