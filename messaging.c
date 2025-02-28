@@ -194,10 +194,26 @@ esp_err_t setupSerial(jsonHandler jsonhandler, binaryHandler binaryhandler, cons
     }
 
     ESP_LOGD(TAG, "Starting receive task with JSON and Binary handlers...");
+    // Allocate handlers struct on heap
     struct {
         jsonHandler jsonHandler;
         binaryHandler binHandler;
-    } handlers = {jsonhandler, binaryhandler};
+    } *handlers = malloc(sizeof(*handlers));
+
+    if (handlers == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate memory for handlers");
+        return ESP_FAIL;
+    }
+
+    // Assign values
+    handlers->jsonHandler = jsonhandler;
+    handlers->binHandler = binaryhandler;
+
+    if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, handlers, TASK_PRIORITY, &receiveSerialTaskHandle)) {
+        ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
+        free(handlers);  // Cleanup if task creation fails
+        return ESP_FAIL;
+    }
 
     if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, &handlers, TASK_PRIORITY, &receiveSerialTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
