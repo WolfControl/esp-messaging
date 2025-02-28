@@ -379,6 +379,10 @@ void listenSerialDaemon(void* pvParameters) {
     uint32_t payloadLength = 0;
     uint8_t msgType = 0;
     
+    // Stall tracking variables - moved outside the loop
+    static TickType_t lastProgress = 0;
+    static uint32_t lastBytesRead = 0;
+    
     // Initialize
     uart_flush_input(UART_NUMBER);
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -428,6 +432,10 @@ void listenSerialDaemon(void* pvParameters) {
                         currentMsg->length = payloadLength;
                         bytesRead = 0;
                         
+                        // Initialize stall tracking when starting a new message
+                        lastBytesRead = 0;
+                        lastProgress = 0;
+                        
                         state = READING_PAYLOAD;
                     } else {
                         ESP_LOGE(TAG, "Failed to read complete header, read %d bytes", readHeader);
@@ -454,6 +462,10 @@ void listenSerialDaemon(void* pvParameters) {
                         bytesRead += readBytes;
                         ESP_LOGD(TAG, "Read %d payload bytes, total %lu/%lu", 
                                 readBytes, bytesRead, payloadLength);
+                        
+                        // Update stall tracking - progress was made
+                        lastBytesRead = bytesRead;
+                        lastProgress = xTaskGetTickCount();
                     }
                     
                     // Check for completion
@@ -476,14 +488,16 @@ void listenSerialDaemon(void* pvParameters) {
                         currentMsg = NULL;
                         bytesRead = 0;
                         state = WAITING_FOR_HEADER;
+                        
+                        // Reset stall tracking variables
+                        lastProgress = 0;
+                        lastBytesRead = 0;
                     }
                 }
                 
-                // Handle stalled reads
-                static TickType_t lastProgress = 0;
-                static uint32_t lastBytesRead = 0;
-                
-                if (bytesRead == lastBytesRead) {
+                // Handle stalled reads - only check when we're actively reading payload
+                // and haven't made progress
+                if (state == READING_PAYLOAD && bytesRead == lastBytesRead && bytesRead > 0) {
                     if (lastProgress == 0) {
                         lastProgress = xTaskGetTickCount();
                     }
@@ -495,12 +509,9 @@ void listenSerialDaemon(void* pvParameters) {
                         bytesRead = 0;
                         state = WAITING_FOR_HEADER;
                         lastProgress = 0;
+                        lastBytesRead = 0;
                         uart_flush_input(UART_NUMBER);
                     }
-                }
-                else {
-                    lastBytesRead = bytesRead;
-                    lastProgress = xTaskGetTickCount();
                 }
             }
         }
@@ -509,7 +520,6 @@ void listenSerialDaemon(void* pvParameters) {
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
-
 
 /*---------- Messaging Functions ----------*/
 
