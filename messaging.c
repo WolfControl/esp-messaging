@@ -245,12 +245,14 @@ void sendSerialTask(void *pvParameters)
     static const char *TAG = "sendSerialTask";
     SerialMessage *msg;
 
-    while(1) {
+    while (1) {
         ESP_LOGD(TAG, "Waiting for outgoing message...");
 
         if (xQueueReceive(outgoingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) 
         {
             ESP_LOGD(TAG, "Received message from outgoingSerialQueue: Type: %u, Length: %lu", msg->type, msg->length);
+
+            size_t totalSize = sizeof(SerialMessage) + msg->length;
 
             if (msg->length > BUF_SIZE) {
                 ESP_LOGE(TAG, "Message exceeds buffer size, dropping...");
@@ -258,11 +260,8 @@ void sendSerialTask(void *pvParameters)
                 continue;
             }
 
-            // Send message header
-            uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(msg->type) + sizeof(msg->length));
-
-            // Send payload separately
-            uart_write_bytes(UART_NUMBER, msg->payload, msg->length);
+            // Send the full struct at once
+            uart_write_bytes(UART_NUMBER, (const char*)msg, totalSize);
 
             ESP_LOGI(TAG, "Packet sent to UART. Type: %u, Size: %lu bytes", msg->type, msg->length);
 
@@ -341,28 +340,34 @@ void receiveSerialTask(void* pvParameters)
 }
 
 
-void listenSerialDaemon(void* pvParameters)
-{
+void listenSerialDaemon(void* pvParameters) {
     static const char* TAG = "listenSerialDaemon";
-
     ESP_LOGI(TAG, "Listening for incoming serial data...");
 
     while (1) {
         size_t available;
         uart_get_buffered_data_len(UART_NUMBER, &available);
 
-        if (available >= sizeof(SerialMessage)) {
+        if (available >= sizeof(uint8_t) + sizeof(uint32_t)) {  // Only check size of type + length
             SerialMessage header;
-            uart_read_bytes(UART_NUMBER, &header, sizeof(header.type) + sizeof(header.length), UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
+
+            // Read type and length fields
+            uart_read_bytes(UART_NUMBER, &header, sizeof(header.type) + sizeof(header.length),
+                            UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
+
+            // Convert length from little-endian
+            header.length = le32toh(header.length);
 
             ESP_LOGI(TAG, "Received Type: %u, Length: %lu", header.type, header.length);
 
+            // Validate message size
             if (header.length > BUF_SIZE) {
                 ESP_LOGE(TAG, "Message too large, dropping");
                 uart_flush(UART_NUMBER);
                 continue;
             }
 
+            // Allocate memory for full message
             SerialMessage* msg = (SerialMessage*)malloc(sizeof(SerialMessage) + header.length);
             if (!msg) {
                 ESP_LOGE(TAG, "Memory allocation failed");
@@ -370,11 +375,13 @@ void listenSerialDaemon(void* pvParameters)
                 continue;
             }
 
-            // Copy header into the new struct
-            *msg = header;
-            
+            // Copy header into allocated struct
+            msg->type = header.type;
+            msg->length = header.length;
+
             // Read payload
-            int received = uart_read_bytes(UART_NUMBER, msg->payload, header.length, UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
+            int received = uart_read_bytes(UART_NUMBER, msg->payload, header.length,
+                                           UART_READ_TIMEOUT_MS / portTICK_PERIOD_MS);
             if (received != header.length) {
                 ESP_LOGE(TAG, "Incomplete message, dropping");
                 free(msg);
@@ -385,7 +392,7 @@ void listenSerialDaemon(void* pvParameters)
             ESP_LOGI(TAG, "Dispatching message to incomingSerialQueue");
             xQueueSend(incomingSerialQueue, &msg, 0);
         }
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
