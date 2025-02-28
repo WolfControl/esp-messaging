@@ -173,14 +173,14 @@ esp_err_t setupSerial(jsonHandler jsonhandler, binaryHandler binaryhandler, cons
 
     // setup message queues
     ESP_LOGD(TAG, "Creating incomingSerialQueue...");
-    incomingSerialQueue = xQueueCreate(10, sizeof(SerialMessage));
+    incomingSerialQueue = xQueueCreate(100, sizeof(SerialMessage));
     if (incomingSerialQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create incomingSerialQueue");
         return ESP_FAIL;
     }
 
     ESP_LOGD(TAG, "Creating outgoingSerialQueue...");
-    outgoingSerialQueue = xQueueCreate(10, sizeof(SerialMessage));
+    outgoingSerialQueue = xQueueCreate(100, sizeof(SerialMessage));
     if (outgoingSerialQueue == NULL) {
         ESP_LOGE(TAG, "Failed to create outgoingSerialQueue");
         return ESP_FAIL;
