@@ -262,30 +262,25 @@ void sendSerialTask(void *pvParameters) {
 
     while (1) {
         if (xQueueReceive(outgoingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) {
-            // First send just the header (5 bytes) atomically
-            uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(uint8_t) + sizeof(uint32_t));
-            
-            // Small delay after header
-            vTaskDelay(pdMS_TO_TICKS(5));
-            
-            // Then send the payload in smaller chunks
-            const size_t MAX_CHUNK = 256;
-            uint32_t sent = 0;
-            
-            while (sent < msg->length) {
-                size_t to_send = (msg->length - sent > MAX_CHUNK) ? MAX_CHUNK : (msg->length - sent);
-                
-                uart_write_bytes(UART_NUMBER, (const char*)&msg->payload[sent], to_send);
-                
-                sent += to_send;
-                
-                // Small delay between chunks
-                if (sent < msg->length) {
-                    vTaskDelay(pdMS_TO_TICKS(5));
-                }
+            size_t totalSize = offsetof(SerialMessage, payload) + msg->length;
+
+            uint8_t buffer = (uint8_t) malloc(totalSize);
+            if (!buffer) {
+                ESP_LOGE(TAG, "Failed to allocate buffer for sending");
+                free(msg);
+                continue;
             }
-            
+
+            // Serialize
+            memcpy(buffer, &msg->type, sizeof(msg->type));
+            memcpy(buffer + sizeof(msg->type), &msg->length, sizeof(msg->length));
+            memcpy(buffer + offsetof(SerialMessage, payload), msg->payload, msg->length);
+
+            uart_write_bytes(UART_NUMBER, buffer, totalSize);
+
             ESP_LOGI(TAG, "Packet sent to UART. Type: %u, Size: %lu bytes", msg->type, msg->length);
+
+            free(buffer);
             free(msg);
         }
     }
@@ -522,7 +517,7 @@ esp_err_t sendMessageSerial(cJSON* body)
 {
     static const char* TAG = "sendMessageSerial";
     char* bodySerialized;
-    
+
     ESP_LOGD(TAG, "Serializing JSON...");
     bodySerialized = cJSON_PrintUnformatted(body);
     if (bodySerialized == NULL) {
@@ -561,7 +556,6 @@ esp_err_t sendMessageSerial(cJSON* body)
     return ESP_OK;
 }
 
-
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 {
     static const char* TAG = "sendMessageESPNow";
@@ -586,32 +580,53 @@ esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC)
 
 
 
-void sendBinaryOverSerial(const uint8_t *chunkData, uint32_t chunkSize) {
-    static const char* TAG = "sendBinaryOverSerial";
-    if (chunkData == NULL || chunkSize == 0) return;  // No data to send
+void sendBinaryOverSerial(const uint8_t chunkData, uint32_t chunkSize) {
+    static const char TAG = "sendBinaryOverSerial";
+    if (chunkSize == 0) return;  // No data to send
 
-    // Allocate memory for the SerialMessage struct
+    // Allocate memory for the complete message
     SerialMessage* msg = (SerialMessage*) malloc(sizeof(SerialMessage) + chunkSize);
-    if (msg == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate memory for SerialMessage");
+    if (!msg) {
+        ESP_LOGE(TAG, "Memory allocation failed");
         return;
     }
 
-    // Populate the struct
+    // Populate the message
     msg->type = 0x02;  // Binary type
     msg->length = chunkSize;
     memcpy(msg->payload, chunkData, chunkSize);
 
-    ESP_LOGD(TAG, "Posting binary data to outgoingSerialQueue...");
-    
-    // Try to send with a timeout to prevent blocking if queue is full
-    if (xQueueSend(outgoingSerialQueue, &msg, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGE(TAG, "Failed to send message to outgoingSerialQueue");
-        free(msg);
-        return;
+    // Send header first (atomically)
+    uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(SerialMessage));
+
+    // Wait a small amount of time for the header to be processed
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // Then send payload in smaller chunks
+    const size_t MAX_CHUNK = 256;
+    size_t sent = 0;
+
+    while (sent < chunkSize) {
+        size_t to_send = (chunkSize - sent > MAX_CHUNK) ? MAX_CHUNK : (chunkSize - sent);
+        int bytes_sent = uart_write_bytes(UART_NUMBER, (const char*)&msg->payload[sent], to_send);
+
+        if (bytes_sent < 0) {
+            ESP_LOGE(TAG, "UART write error");
+            free(msg);
+            return;
+        }
+
+        sent += bytes_sent;
+
+        // Allow some time between chunks
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
-    
-    ESP_LOGI(TAG, "Binary data queued: %lu bytes", chunkSize);
+
+    // Final delay before the next message
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    free(msg);
+    ESP_LOGI(TAG, "Binary data sent: %lu bytes", chunkSize);
 }
 
 
