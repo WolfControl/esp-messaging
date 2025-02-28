@@ -91,7 +91,7 @@ esp_err_t setupESPNow (jsonHandler jsonhandler);
  * 
  * @note Sets up UART driver, event queues, and tasks.
 */
-esp_err_t setupSerial(jsonHandler jsonhandler,  binaryHandler binaryhandler, const int txPin, const int rxPin);
+esp_err_t setupSerial(jsonHandler jsonhandler, binaryHandler binaryhandler, const int txPin, const int rxPin);
 
 /*-------------- RTOS Tasks --------------*/
 
@@ -164,8 +164,6 @@ esp_err_t sendMessageSerial(cJSON* body);
 */
 esp_err_t sendMessageESPNow(cJSON* body, const uint8_t* destinationMAC);
 
-
-void sendBinaryOverSerial(const uint8_t *chunkData, uint32_t chunkSize);
 
 #ifdef __cplusplus
 }
