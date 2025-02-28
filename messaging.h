@@ -39,7 +39,7 @@ typedef struct {
     uint8_t destinationMAC[ESP_NOW_ETH_ALEN];
 } ESPNowMessage;
 
-typedef struct {
+typedef struct __attribute__((packed)) {
     uint8_t type;       // 0x01 = JSON, 0x02 = Binary
     uint32_t length;    // Length of the message payload
     uint8_t payload[];  // Flexible array member for message data
