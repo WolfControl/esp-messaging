@@ -39,7 +39,7 @@ void OnESPNowRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingD
 
 /*---------- Setup Functions ----------*/
 
-esp_err_t setupESPNow (messageHandler handler)
+esp_err_t setupESPNow (jsonHandler jsonhandler)
 {
     static const char *TAG = "setupESPNow";
     esp_err_t ret = ESP_OK;
@@ -133,7 +133,7 @@ esp_err_t setupESPNow (messageHandler handler)
     }
 
     ESP_LOGD(TAG, "Starting receive task with abstract handler...");
-    if (pdPASS != xTaskCreate(receiveESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, handler, TASK_PRIORITY, &receiveESPNowTaskHandle)) {
+    if (pdPASS != xTaskCreate(receiveESPNowTask, "listenESPNow_task", TASK_STACK_SIZE, jsonhandler, TASK_PRIORITY, &receiveESPNowTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create listener task");
         return ESP_FAIL;
     }
@@ -148,7 +148,7 @@ esp_err_t setupESPNow (messageHandler handler)
     return ESP_OK;
 }
 
-esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) {
+esp_err_t setupSerial(jsonHandler jsonhandler, binaryHandler binaryhandler, const int txPin, const int rxPin) {
     const char*TAG = "setupSerial";
 
     ESP_LOGD(TAG, "Setting UART parameters...");
@@ -193,8 +193,13 @@ esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin) 
         return ESP_FAIL;
     }
 
-    ESP_LOGD(TAG, "Starting receive task with abstract handler...");
-    if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, (void *) handler, TASK_PRIORITY, &receiveSerialTaskHandle)) {
+    ESP_LOGD(TAG, "Starting receive task with JSON and Binary handlers...");
+    struct {
+        jsonHandler jsonHandler;
+        binaryHandler binHandler;
+    } handlers = {jsonhandler, binaryhandler};
+
+    if (pdPASS != xTaskCreate(receiveSerialTask, "receiveSerial_task", TASK_STACK_SIZE, &handlers, TASK_PRIORITY, &receiveSerialTaskHandle)) {
         ESP_LOGE(TAG, "Failed to create task: receiveSerial_task");
         return ESP_FAIL;
     }
@@ -274,7 +279,7 @@ void sendSerialTask(void *pvParameters) {
 void receiveESPNowTask (void* pvParameters)
 {
     static const char *TAG = "receiveESPNowTask";
-    messageHandler handler = (messageHandler)pvParameters;
+    jsonHandler handler = (jsonHandler)pvParameters;
     uint8_t* incomingData;
     const char* errorPtr;
 
@@ -300,36 +305,41 @@ void receiveESPNowTask (void* pvParameters)
     }
 }
 
-void receiveSerialTask(void* pvParameters)
-{
+void receiveSerialTask(void* pvParameters) {
     static const char* TAG = "receiveSerialTask";
-    messageHandler handler = (messageHandler)pvParameters;
-    SerialMessage* msg;
+    
+    // Extract handlers from parameter struct
+    struct {
+        jsonHandler jsonHandler;
+        binaryHandler binHandler;
+    } *handlers = pvParameters;
 
+    SerialMessage* msg;
     ESP_LOGD(TAG, "Waiting for incoming data...");
 
     while (1) {
         if (xQueueReceive(incomingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) {
             ESP_LOGI(TAG, "Received message. Type: %u, Length: %lu", msg->type, msg->length);
 
-            if (msg->type == 0x01) {  // JSON Message
+            if (msg->type == 0x01 && handlers->jsonHandler) {  // JSON Message
                 ESP_LOGD(TAG, "Parsing JSON...");
                 const char* errorPtr;
                 cJSON* incomingJSON = cJSON_ParseWithOpts((char*)msg->payload, &errorPtr, 0);
 
-                if (incomingJSON == NULL) {
+                if (!incomingJSON) {
                     ESP_LOGE(TAG, "Failed to parse incoming JSON: Error at %s", errorPtr);
                 } else {
-                    ESP_LOGI(TAG, "Passing data to handler...");
-                    handler(incomingJSON);
+                    ESP_LOGI(TAG, "Passing data to JSON handler...");
+                    handlers->jsonHandler(incomingJSON);
+                    cJSON_Delete(incomingJSON);
                 }
             } 
-            else if (msg->type == 0x02) {  // Binary Message
-                ESP_LOGI(TAG, "Handling binary data of size %lu", msg->length);
-                //processBinaryData(msg->payload, msg->length);
+            else if (msg->type == 0x02 && handlers->binHandler) {  // Binary Message
+                ESP_LOGI(TAG, "Passing binary data to handler...");
+                handlers->binHandler(msg->payload, msg->length);
             } 
             else {
-                ESP_LOGE(TAG, "Unknown message type: %u", msg->type);
+                ESP_LOGE(TAG, "Unknown or unhandled message type: %u", msg->type);
             }
 
             ESP_LOGD(TAG, "Freeing memory...");

@@ -31,8 +31,11 @@ extern "C" {
 #define UART_READ_TIMEOUT_MS 100
 
 
-// messageHandler can be any user defined function so long as it takes the message body as a cJSON pointer
-typedef void (*messageHandler)(cJSON* incomingMessage);
+// jsonHandler can be any user defined function so long as it takes the message body as a cJSON pointer
+typedef void (*jsonHandler)(cJSON* incomingMessage);
+
+// binaryHandler can be any user defined function so long as it takes the binary data as a uint8_t pointer and length as a size_t
+typedef void (*binaryHandler)(uint8_t* data, size_t length);
 
 typedef struct {
     char* bodyserialized;
@@ -65,18 +68,20 @@ void OnESPNowRecv(const esp_now_recv_info_t *recv_info, const uint8_t *incomingD
 /**
  * @brief Sets up components necessary for messaging via ESP-NOW.
  * 
- * @param handler User defined function to handle incoming messages. Expects a cJSON pointer.
+ * @param jsonhandler User defined function to handle incoming messages. Expects a cJSON pointer.
  * 
  * @return ESP_OK if successful, ESP_FAIL if not.
  * 
  * @note Sets up wifi stack, sets callbacks, creates queues and tasks.
 */
-esp_err_t setupESPNow (messageHandler handler);
+esp_err_t setupESPNow (jsonHandler jsonhandler);
 
 /**
  * @brief Sets up components necessary for messaging via UART.
  * 
- * @param handler User defined function to handle incoming messages. Expects a cJSON pointer.
+ * @param jsonhandler User defined function to handle incoming messages. Expects a cJSON pointer.
+ * 
+ * @param binaryhandler User defined function to handle incoming binary data. Expects a uint8_t pointer and size_t.
  * 
  * @param txPin GPIO pin to use for UART TX.
  * 
@@ -86,7 +91,7 @@ esp_err_t setupESPNow (messageHandler handler);
  * 
  * @note Sets up UART driver, event queues, and tasks.
 */
-esp_err_t setupSerial(messageHandler handler, const int txPin, const int rxPin);
+esp_err_t setupSerial(jsonHandler jsonhandler,  binaryHandler binaryhandler, const int txPin, const int rxPin);
 
 /*-------------- RTOS Tasks --------------*/
 
