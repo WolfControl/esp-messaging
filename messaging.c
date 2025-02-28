@@ -262,25 +262,30 @@ void sendSerialTask(void *pvParameters) {
 
     while (1) {
         if (xQueueReceive(outgoingSerialQueue, &msg, portMAX_DELAY) == pdTRUE) {
-            size_t totalSize = offsetof(SerialMessage, payload) + msg->length;
-
-            uint8_t *buffer = (uint8_t*) malloc(totalSize);
-            if (!buffer) {
-                ESP_LOGE(TAG, "Failed to allocate buffer for sending");
-                free(msg);
-                continue;
+            // First send just the header (5 bytes) atomically
+            uart_write_bytes(UART_NUMBER, (const char*)msg, sizeof(uint8_t) + sizeof(uint32_t));
+            
+            // Small delay after header
+            vTaskDelay(pdMS_TO_TICKS(5));
+            
+            // Then send the payload in smaller chunks
+            const size_t MAX_CHUNK = 256;
+            uint32_t sent = 0;
+            
+            while (sent < msg->length) {
+                size_t to_send = (msg->length - sent > MAX_CHUNK) ? MAX_CHUNK : (msg->length - sent);
+                
+                uart_write_bytes(UART_NUMBER, (const char*)&msg->payload[sent], to_send);
+                
+                sent += to_send;
+                
+                // Small delay between chunks
+                if (sent < msg->length) {
+                    vTaskDelay(pdMS_TO_TICKS(5));
+                }
             }
-
-            // Serialize
-            memcpy(buffer, &msg->type, sizeof(msg->type));
-            memcpy(buffer + sizeof(msg->type), &msg->length, sizeof(msg->length));
-            memcpy(buffer + offsetof(SerialMessage, payload), msg->payload, msg->length);
-
-            uart_write_bytes(UART_NUMBER, buffer, totalSize);
-
+            
             ESP_LOGI(TAG, "Packet sent to UART. Type: %u, Size: %lu bytes", msg->type, msg->length);
-
-            free(buffer);
             free(msg);
         }
     }
