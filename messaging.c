@@ -444,8 +444,8 @@ void listenSerialDaemon(void* pvParameters) {
                 }
             }
             else if (state == READING_PAYLOAD) {
-                // Read payload in smaller chunks (more robust)
-                uint32_t readSize = (available < 256) ? available : 256;
+                // Read payload in smaller chunks
+                uint32_t readSize = (available < 128) ? available : 128;
                 
                 // Don't read more than needed
                 if (readSize > (payloadLength - bytesRead)) {
@@ -475,7 +475,7 @@ void listenSerialDaemon(void* pvParameters) {
                             currentMsg->payload[payloadLength] = '\0';
                         }
                         
-                        ESP_LOGI(TAG, "Payload complete, dispatching message");
+                        ESP_LOGD(TAG, "Payload complete, dispatching message");
                         
                         // Send to queue for processing
                         SerialMessage* msgToSend = currentMsg;

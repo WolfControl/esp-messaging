@@ -22,12 +22,11 @@ extern "C" {
 
 // macros for serial
 #define UART_NUMBER UART_NUM_2
-#define BUF_SIZE 1000
+#define BUF_SIZE 2048
 #define UART_QUEUE_SIZE 0
 #define TASK_STACK_SIZE 8192
 #define TASK_PRIORITY 5
 #define BAUD_RATE 115200
-#define LISTENER_TASK_DELAY_MS 10
 #define UART_READ_TIMEOUT_MS 100
 
 
