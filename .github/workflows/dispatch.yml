@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        repo: ['WolfControl/gateway_wifi', 'WolfControl/gateway_espnow', 'WolfControl/sensor_water']
+        repo: ['WolfControl/gateway_wifi', 'WolfControl/gateway_espnow', 'WolfControl/sensor_water', 'WolfControl/sensor_atmosphere']
     steps:
       - name: Repository Dispatch
         uses: peter-evans/repository-dispatch@v3
